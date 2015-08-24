@@ -473,7 +473,7 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
                 if fixed[i]:
                     d01[i] += offs[i] * arrows_dist * [1., -1.][i]
                     mina -= 1
-                    if maxa != None: maxa -= 1
+                    if not maxa is None: maxa -= 1
             if d01[1] - d01[0] < 0.: break
             elif d01[1] - d01[0] == 0.: d_list = [d01[0]]
             else:
@@ -487,7 +487,7 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
                         else: number_offsets += offs[i] - .5
                     n = int(number_intervals - number_offsets + 0.5)
                     n = max(n, mina)
-                    if maxa != None: n = min(n, maxa)
+                    if not maxa is None: n = min(n, maxa)
                     if n > 0:
                         d = (d01[1] - d01[0]) / float(n + number_offsets)
                         if fixed[0]: d_start = d01[0] + d
@@ -602,7 +602,7 @@ class FieldLine:
         '''
         p_near = self.first_point
         d_near = vabs(self.first_point - p)
-        if v != None: d_near *= 1.3 - cosv(v, self.first_point - p)
+        if not v is None: d_near *= 1.3 - cosv(v, self.first_point - p)
         type_near = 'start'
         mon = []
         for ptype, poles in self.field.elements.iteritems():
@@ -610,7 +610,7 @@ class FieldLine:
                 continue
             for pole in poles:
                 d = vabs(pole[:2] - p)
-                if v != None: d *= 1.3 - cosv(v, pole[:2] - p)
+                if not v is None: d *= 1.3 - cosv(v, pole[:2] - p)
                 if d < d_near:
                     d_near = d
                     p_near = pole
@@ -643,7 +643,7 @@ class FieldLine:
         else: f = lambda r: -self.field.Fn(r)
         # first point
         p = self.p_start
-        if self.v_start != None:
+        if not self.v_start is None:
             v = vnorm(self.v_start) * sign
         else:
             v = f(p)
@@ -654,7 +654,7 @@ class FieldLine:
         l = 0.; i = 0
         while i < maxn and l < maxr:
             i += 1
-            if len(nodes) == 1 and self.d_start != None:
+            if len(nodes) == 1 and not self.d_start is None:
                 # check for start from a dipole
                 h = vabs(self.d_start)
                 p = p + self.d_start
@@ -815,7 +815,7 @@ class FieldLine:
                 l += h
  
             # stop at the prohibited area
-            if self.stop_funcs != None and self.stop_funcs != [None, None]:
+            if not self.stop_funcs is None and self.stop_funcs != [None, None]:
                 stop_fct = self.stop_funcs[{-1.0:0, 1.0:1}[sign]]
                 if stop_fct(nodes[-1]['p']) > 0.0:
                     while len(nodes) > 1 and stop_fct(nodes[-2]['p']) > 0.0:
@@ -1021,7 +1021,7 @@ class FieldLine:
         returns a points distance to the drawing area
         >0: outside;    <=0: inside
         '''
-        if self.bounds_func != None:
+        if not self.bounds_func is None:
             s = self.bounds_func(p)
             if s > 0.: return s
         if bounds == None: return -1.
