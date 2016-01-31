@@ -416,6 +416,40 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
             line_and_arrows.append(line)
             line_and_arrows.append(self.__draw_arrows(
                 arrows_style, linewidth, polylines, linecolor, closed))
+
+    def draw_vectors(self, vectors, linewidth=2.,
+        linecolor='#000000', attributes=[], arrows_style=None):
+
+      arrowhead = etree.SubElement( self.__get_defs(), 'marker')
+      arrowhead.set('id', 'arrowhead')
+      arrowhead.set('orient', 'auto')
+      arrowhead.set('refX', '1')
+      arrowhead.set('refY', '5')
+      arrowhead.set('markerWidth', '3')
+      arrowhead.set('markerHeight', '3')
+      arrowhead.set('viewBox', '0 0 10 10')
+
+      path = etree.SubElement(arrowhead, 'path')
+      path.set('fill', linecolor)
+      path.set('d', 'M 0 0 L 10 5 L 0 10 z' )
+
+
+      self.fieldvectors = etree.SubElement(self.content, 'g')
+      self.fieldvectors.set('id', 'fieldvectors')
+      self.fieldvectors.set('fill', 'none')
+      self.fieldvectors.set('stroke', linecolor)
+      self.fieldvectors.set('stroke-width', str(linewidth / self.unit))
+      for x,y,F in vectors.scaled_vectors:
+        line = etree.Element('line')
+        line.set('x1', '%f'%x )
+        line.set('y1', '%f'%y )
+        line.set('x2', '%f'%(x+F[0]) )
+        line.set('y2', '%f'%(y+F[1]) )
+        line.set('marker-end', 'url(#arrowhead)' )
+
+        self.fieldvectors.append(line)
+
+
  
     def __draw_arrows(self, arrows_style, linewidth, polylines,
         linecolor='#000000', closed=False):
@@ -1104,7 +1138,106 @@ class FieldLine:
                     'start':(interval['t0']==0.), 'end':(interval['t1']==1.)})
         return polyline
  
- 
+class FieldVectors:
+  '''
+  calculates field vectors
+  '''
+  def __init__(self, field, minscale=0, maxscale=1, unit=None, halo=None):
+    self.minscale = minscale
+    self.maxscale = maxscale
+    self.unit = unit
+    self.halo = halo
+    self.field = field
+    self.vectors = []
+    self.scaled_vectors = []
+
+
+
+  def add_vectors_in_grid(self, xmin, ymin, xmax, ymax, xN, yN):
+    xmin = 1.*xmin
+    xmax = 1.*xmax
+    dx = (xmax - xmin) / (xN - 1)
+
+    ymin = 1.*ymin
+    ymax = 1.*ymax
+    dy = (ymax - ymin) / (yN - 1)
+
+    if self.unit is None:
+      self.unit = min(dx,dy)
+
+    XYs = []
+    for x in sc.linspace( xmin, xmax, num=xN ):
+      for y in sc.linspace( ymin, ymax, num=yN ):
+        XYs.append( (x,y) )
+
+    self.__add_vectors(XYs)
+    self.__scale_vectors( self.__log_scale )
+
+
+  def __add_vectors(self, XYs):
+    for x,y in XYs:
+      f = self.field.F([x,y])
+      self.vectors.append( (x,y,f) )
+
+  def __scale_vectors(self, trans):
+
+    def inhalo(p):
+
+      if self.halo is None:
+        return False
+
+      pd  = self.__get_distance_to_nearest_pole( sc.array(p) )
+      halo = self.halo
+      if self.halo == 'auto':
+        halo = self.maxscale*self.unit
+
+      return  pd and pd < halo
+
+    self.scaled_vectors = []
+    minlen = maxlen = None
+    for i in range(len(self.vectors)):
+      x,y,f = self.vectors[i]
+      if inhalo([x,y]):
+        continue
+
+      if minlen is None or vabs(f) < minlen:
+        minlen = vabs(f)
+      if maxlen is None or vabs(f) > maxlen:
+        maxlen = vabs(f)
+
+    self.scaled_vectors = []
+    for i in range(len(self.vectors)):
+      x,y,f = self.vectors[i]
+      if inhalo([x,y]):
+        continue
+      self.scaled_vectors.append( (x,y,trans( f, self.minscale*self.unit, self.maxscale*self.unit, minlen, maxlen )) )
+
+  def __log_scale(self, f, newmin, newmax, oldmin, oldmax):
+    oldlen = vabs(f)
+    ratio = log10( oldlen / oldmin ) / log10( oldmax / oldmin )
+    newlen = newmin + (newmax - newmin) * ratio
+
+    fx = newlen * f[0] / oldlen
+    fy = newlen * f[1] / oldlen
+
+    return [fx,fy]
+
+  def __get_distance_to_nearest_pole(self, p, v=None):
+      '''
+      returns distance to nearest pole
+      '''
+      d_near = None
+      for ptype, poles in self.field.elements.iteritems():
+          if ptype not in ['monopoles', 'dipoles'] or len(poles) == 0:
+              continue
+          for pole in poles:
+              d = vabs(pole[:2] - p)
+              if d_near is None or d < d_near:
+                d_near = d
+
+      return d_near
+
+
  
 class Field:
     '''
