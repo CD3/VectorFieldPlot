@@ -1,3 +1,4 @@
+#! /bin/env python
 # -*- coding: utf8 -*-
  
 '''
@@ -5,6 +6,7 @@ VectorFieldPlot - plots electric and magnetic fieldlines in svg
 http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot
  
 Copyright (C) 2010 Geek3
+Copyright (C) 2015 CD3
  
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -24,11 +26,12 @@ version = '1.3'
  
  
 from math import *
+import bisect
+
 from lxml import etree
 import scipy as sc
 import scipy.optimize as op
 import scipy.integrate as ig
-import bisect
  
  
  
@@ -1151,8 +1154,6 @@ class FieldVectors:
     self.vectors = []
     self.scaled_vectors = []
 
-
-
   def add_vectors_in_grid(self, xmin, ymin, xmax, ymax, xN, yN):
     xmin = 1.*xmin
     xmax = 1.*xmax
@@ -1171,18 +1172,20 @@ class FieldVectors:
         XYs.append( (x,y) )
 
     self.__add_vectors(XYs)
-    self.__scale_vectors( self.__log_scale )
+    self.__create_scaled_vectors( )
 
+  def add_vectors_on_line(self, line, ds):
+    '''Adds vectors'''
 
   def __add_vectors(self, XYs):
     for x,y in XYs:
       f = self.field.F([x,y])
       self.vectors.append( (x,y,f) )
 
-  def __scale_vectors(self, trans):
-
+  def __create_scaled_vectors(self, trans = None ):
+    if trans is None:
+      trans = self.__log_scale
     def inhalo(p):
-
       if self.halo is None:
         return False
 
@@ -1389,6 +1392,12 @@ class Field:
         if (d != 0.): return force / d
         return sc.array([0., 0.])
 
+
+if __name__ == "main":
+  import yaml
+
+  for file in sys.argv:
+    print file
 
 #doc = FieldplotDocument ( 'VFPt_cylindrical_magnet_thumb' , width = 320 , height = 165 , unit = 30 , commons = True ) 
 #r =  0.5 + 0.5 / 30 

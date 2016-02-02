@@ -1,1 +1,1 @@
-../src/vectorfieldplot.py
+../vectorfieldplot.py
