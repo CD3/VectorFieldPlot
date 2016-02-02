@@ -1,0 +1,62 @@
+options:
+  document:
+    draw:
+      charges :
+        scale : 1.0
+      line :
+        maxdist : 10.
+        linewidth : 2.
+        linecolor : '#000000'
+        attributes : []
+        arrows_style:
+          min_arrows: 1
+          max_arrows: 1
+
+document:
+  name : 'ElectricDipoleField'
+  width : 800
+  height : 600
+  digits: 3.5
+  unit : 100
+  center: null
+  license: 'GFDL-cc'
+  commons : False
+
+field:
+  elements:
+    monopoles:
+      - [ 1, 0, 1 ]  # [x,y,q]
+      - [-1, 0,-1 ]  # [x,y,q]
+
+fieldline_config: &flc
+    directions : both
+    maxn : 1000
+    maxr : 300.0
+    hmax : 1.0,
+    pass_dipoles : 0
+    path_close_tol : 5e-3
+    bounds_func : null
+    stop_funcs : [null, null]
+
+
+fieldlines:
+  - start_p : [1,0]
+    start_v : [1,1]
+    << : *flc
+  - start_p : [-1,0]
+    start_v : [1,1]
+    << : *flc
+
+fieldline_bundles:
+  - type : from_point
+    start_p : [1,0]
+    theta_min : 0
+    theta_max : 360
+    N : 5
+    << : *flc
+  - type : from_point
+    start_p : [-1,0]
+    theta_min : 0
+    theta_max : 360
+    N : 5
+    << : *flc

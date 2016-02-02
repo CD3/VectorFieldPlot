@@ -107,13 +107,13 @@ class FieldplotDocument:
     creates a svg document structure using lxml.etree
     '''
     def __init__ (self, name, width=800, height=600, digits=3.5, unit=100,
-        center=None, licence='GFDL-cc', commons=False):
+        center=None, license='GFDL-cc', commons=False):
         self.name = name
         self.width = float(width)
         self.height = float(height)
         self.digits = float(digits)
         self.unit = float(unit)
-        self.licence = licence
+        self.license = license
         self.commons = commons
         if center == None: self.center = [width / 2., height / 2.]
         else: self.center = [float(i) for i in center]
@@ -141,7 +141,7 @@ class FieldplotDocument:
             self.desc.text += """
 about: http://commons.wikimedia.org/wiki/File:{0}.svg
 """.format(self.name)
-        if self.licence == 'GFDL-cc':
+        if self.license == 'GFDL-cc':
             self.desc.text += """rights: GNU Free Documentation license,
         Creative Commons Attribution ShareAlike license\n"""
         self.desc.text += '  '
@@ -1393,23 +1393,71 @@ class Field:
         return sc.array([0., 0.])
 
 
-if __name__ == "main":
+if __name__ == "__main__":
+  import sys
   import yaml
+  configs = []
+  for fn in sys.argv[1:]:
+    with open(fn,'r') as f:
+      for c in yaml.load_all(f.read()):
+        configs.append(c)
 
-  for file in sys.argv:
-    print file
+  def get( d, key, default = None ):
+    keys = key.split('.')
+    tmp = d
+    missing = False
+    for k in keys:
+      if tmp is not None and k in tmp:
+        tmp = tmp[k]
+      else:
+        missing= True
+        break
 
-#doc = FieldplotDocument ( 'VFPt_cylindrical_magnet_thumb' , width = 320 , height = 165 , unit = 30 , commons = True ) 
-#r =  0.5 + 0.5 / 30 
-#field = Field ( { 'coils' : [ [ 0 ,  0 ,  0 , r ,  1.5 ,  1 ] ] } ) 
-#doc. draw_magnets ( field ) 
-#n = 43 
-#for i in  range ( n ) :
-    #一个= R * （ - 1 + 2 * （0.5 + I ） / n ) 
-    #line = FieldLine ( field ,  [ 0 , a ] , directions = 'both' , maxr = 10.0 ) 
-    #doc. draw_line ( line , linewidth = 1 , arrows_style = { 
-        #'dist' : 25 ,  'scale' : 1.4 ,  'offsets' : [ 1 ,  0.3 ,  0.3 ,  1 ] } ) 
-#doc. write ( )
-#### append your specific field creation here ###
-## see http://commons.wikimedia.org/wiki/File:VFPt_charges_plus_minus.svg for an example
-#print "individual image description code must be inserted at the end of this program's source code!"
+    if missing:
+      return default
+    else:
+      return tmp
+
+
+
+
+  for config in configs:
+    doc = FieldplotDocument( **config['document'] )
+    field = Field( **config['field'] )
+
+    for k in get( config, 'options.document.draw', {} ):
+      if k == 'charges':
+        getattr(doc, 'draw_'+k)(field,**get(config, 'options.document.draw.'+k))
+
+    for lconfig in get( config, 'fieldlines', [] ):
+      fline = FieldLine( field, **lconfig )
+      doc.draw_line( fline, **get(config, 'options.document.draw.line', {} ) )
+
+    for bundle in get( config, 'fieldline_bundles', [] ):
+      if bundle['type'] == 'from_point':
+        bconfig = { 'start_p' : []
+                  , 'theta_min' : 0
+                  , 'theta_max' : 360
+                  , 'N' : 10
+                  }
+        for k in bconfig:
+          if k in bundle:
+            bconfig[k] = bundle[k]
+
+        dtheta = (bconfig['theta_max'] - bconfig['theta_min']) / (bconfig['N'] )
+        for i in range(bconfig['N']):
+          lconfig = bundle.copy()
+          # remove bundle config entries
+
+          del lconfig['type']
+          for k in bconfig:
+            if k in lconfig:
+              del lconfig[k]
+
+          lconfig['start_p'] = bconfig['start_p']
+          theta = (pi/180.)*(bconfig['theta_min'] + i*dtheta)
+          lconfig['start_v'] = [cos( theta ) , sin( theta )]
+          fline = FieldLine( field, **lconfig )
+          doc.draw_line( fline, **get(config, 'options.document.draw.line', {} ) )
+
+    doc.write()
