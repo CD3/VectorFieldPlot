@@ -25,10 +25,12 @@ along with this program; if not, see http://www.gnu.org/licenses/
 version = '1.3'
  
  
+import sys
 from math import *
 import bisect
 
 from lxml import etree
+import svgwrite
 import scipy as sc
 import scipy.optimize as op
 import scipy.integrate as ig
@@ -102,6 +104,8 @@ def pretty_vec(p):
     return '{0:> 9.5f},{1:> 9.5f}'.format(p[0], p[1])
  
  
+
+
 class FieldplotDocument:
     '''
     creates a svg document structure using lxml.etree
@@ -139,8 +143,8 @@ class FieldplotDocument:
         self.desc.text += 'http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot\n'
         if commons:
             self.desc.text += """
-about: http://commons.wikimedia.org/wiki/File:{0}.svg
-""".format(self.name)
+            about: http://commons.wikimedia.org/wiki/File:{0}.svg
+            """.format(self.name)
         if self.license == 'GFDL-cc':
             self.desc.text += """rights: GNU Free Documentation license,
         Creative Commons Attribution ShareAlike license\n"""
@@ -163,6 +167,33 @@ about: http://commons.wikimedia.org/wiki/File:{0}.svg
             self.center[0], self.center[1], self.unit))
  
         self.arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
+
+        self.dwg = svgwrite.Drawing(height=self.height, width=self.width)
+        dwg = self.dwg
+        # defs
+        g = dwg.add(dwg.radialGradient(id='white_spot',center=(0.65,0.7), r=0.75))
+        for col, of, op in [['#ffffff', '0', '0.7'],
+                            ['#ffffff', '0.1', '0.5'],
+                            ['#ffffff', '0.6', '0'],
+                            ['#000000', '0.6', '0'],
+                            ['#000000', '0.75', '0.05'],
+                            ['#000000', '0.85', '0.15'],
+                            ['#000000', '1', '0.5']]:
+          g.add_stop_color( color=col, offset=of, opacity=op )
+        dwg.defs.add( g )
+
+
+
+        # background
+        r = dwg.rect( id='background', insert=(0,0), size=(self.width,self.height), fill='white' )
+        dwg.add(r)
+
+        # image group
+        self.img = dwg.g(id='image')
+        self.img.translate(self.center[0], self.center[1])
+        self.img.scale( self.unit, -self.unit )
+        dwg.add(self.img)
+
  
     def __get_defs(self):
         if 'defs' not in dir(self):
@@ -227,32 +258,28 @@ about: http://commons.wikimedia.org/wiki/File:{0}.svg
         self.__check_whitespot()
  
         for charge in charges:
-            c_group = etree.SubElement(self.symbols, 'g')
-            self.count_symbols += 1
-            c_group.set('id', 'charge{0}'.format(self.count_symbols))
-            c_group.set('transform',
-                'translate({0},{1}) scale({2},{2})'.format(
-                charge[0], charge[1], float(scale) / self.unit))
- 
-            #### charge drawing ####
-            c_bg = etree.SubElement(c_group, 'circle')
-            c_shade = etree.SubElement(c_group, 'circle')
-            c_symb = etree.SubElement(c_group, 'path')
-            if charge[2] >= 0.: c_bg.set('style', 'fill:#ff0000; stroke:none')
-            else: c_bg.set('style', 'fill:#0000ff; stroke:none')
-            for attr, val in [['cx', '0'], ['cy', '0'], ['r', '14']]:
-                c_bg.set(attr, val)
-                c_shade.set(attr, val)
-            c_shade.set('style',
-                'fill:url(#white_spot); stroke:#000000; stroke-width:2')
-            # plus sign
-            if charge[2] >= 0.:
-                c_symb.set('d', 'M 2,2 V 8 H -2 V 2 H -8 V -2'
-                    + ' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
-            # minus sign
-            else: c_symb.set('d', 'M 8,2 H -8 V -2 H 8 V 2 Z')
-            c_symb.set('style', 'fill:#000000; stroke:none')
- 
+
+          self.count_symbols += 1
+          dwg = self.dwg
+          img = self.img
+          g = dwg.g(id='charge{0}'.format(self.count_symbols))
+          c = dwg.circle(r=14, fill=('blue' if charge[2] < 0 else 'red') )
+          g.add( c )
+          c = dwg.circle(r=14,fill='url(#white_spot)',stroke='black',stroke_width=2)
+          g.add( c )
+          p = dwg.path()
+          if charge[2] < 0:
+            p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
+          else:
+            p.push('M 2,2 V 8 H -2 V 2 H -8 V -2')
+            p.push(' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
+          g.add(p)
+          g.translate(charge[0], charge[1])
+          g.scale(float(scale)/self.unit)
+          img.add( g )
+
+          self.symbols.append( etree.XML(g.tostring()) )
+
     def draw_currents(self, field, scale=1.):
         if ('wires' not in field.elements
             and 'ringcurrents' not in field.elements):
@@ -598,8 +625,9 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
             pretty_print=True, encoding='utf-8'))
         outfile.close()
         print 'image written to', filename + '.svg'
- 
- 
+
+        self.dwg.save()
+        self.dwg.write(sys.stdout)
  
 class FieldLine:
     '''
@@ -1239,7 +1267,6 @@ class FieldVectors:
                 d_near = d
 
       return d_near
-
 
  
 class Field:
