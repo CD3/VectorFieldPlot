@@ -103,6 +103,21 @@ def list_interpolate(l, t):
 def pretty_vec(p):
     return '{0:> 9.5f},{1:> 9.5f}'.format(p[0], p[1])
  
+
+def get_elem_by_id(parent,key):
+
+  keys = key.split('.')
+  key = keys[0]
+
+  for e in parent.elements:
+    if 'id' in e.attribs and e['id'] == key:
+      if len(keys) > 1:
+        return get_elem_by_id(e,'.'.join(keys[1:]))
+      else:
+        return e
+
+  return None
+
  
 
 
@@ -110,8 +125,7 @@ class FieldplotDocument:
     '''
     creates a svg document structure using lxml.etree
     '''
-    def __init__ (self, name, width=800, height=600, digits=3.5, unit=100,
-        center=None, license='GFDL-cc', commons=False):
+    def __init__ (self, name, width=800, height=600, digits=3.5, unit=100, center=None, license='GFDL-cc', commons=False):
         self.name = name
         self.width = float(width)
         self.height = float(height)
@@ -121,68 +135,25 @@ class FieldplotDocument:
         self.commons = commons
         if center == None: self.center = [width / 2., height / 2.]
         else: self.center = [float(i) for i in center]
- 
-        # create document structure
-        self.svg = etree.Element('svg',
-            nsmap={None: 'http://www.w3.org/2000/svg',
-            'xlink': 'http://www.w3.org/1999/xlink'})
-        self.svg.set('version', '1.1')
-        self.svg.set('baseProfile', 'full')
-        self.svg.set('width', str(int(width)))
-        self.svg.set('height', str(int(height)))
- 
-        # title
-        self.title = etree.SubElement(self.svg, 'title')
-        self.title.text = self.name
- 
-        # description
-        self.desc = etree.SubElement(self.svg, 'desc')
-        self.desc.text = ''
-        self.desc.text += self.name + '\n'
-        self.desc.text += 'created with VectorFieldPlot ' + version + '\n'
-        self.desc.text += 'http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot\n'
-        if commons:
-            self.desc.text += """
-            about: http://commons.wikimedia.org/wiki/File:{0}.svg
-            """.format(self.name)
-        if self.license == 'GFDL-cc':
-            self.desc.text += """rights: GNU Free Documentation license,
-        Creative Commons Attribution ShareAlike license\n"""
-        self.desc.text += '  '
- 
-        # background
-        self.background = etree.SubElement(self.svg, 'rect')
-        self.background.set('id', 'background')
-        self.background.set('x', '0')
-        self.background.set('y', '0')
-        self.background.set('width', str(width))
-        self.background.set('height', str(height))
-        self.background.set('fill', '#ffffff')
- 
-        # image elements
-        self.content = etree.SubElement(self.svg, 'g')
-        self.content.set('id', 'image')
-        self.content.set('transform',
-            'translate({0},{1}) scale({2},-{2})'.format(
-            self.center[0], self.center[1], self.unit))
- 
-        self.arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
 
-        self.dwg = svgwrite.Drawing(height=self.height, width=self.width)
+
+
+
+        # the SVG document
+        self.dwg = svgwrite.Drawing(filename=name+'.svg', height=self.height, width=self.width)
         dwg = self.dwg
         # defs
-        g = dwg.add(dwg.radialGradient(id='white_spot',center=(0.65,0.7), r=0.75))
-        for col, of, op in [['#ffffff', '0', '0.7'],
-                            ['#ffffff', '0.1', '0.5'],
-                            ['#ffffff', '0.6', '0'],
-                            ['#000000', '0.6', '0'],
-                            ['#000000', '0.75', '0.05'],
-                            ['#000000', '0.85', '0.15'],
-                            ['#000000', '1', '0.5']]:
-          g.add_stop_color( color=col, offset=of, opacity=op )
-        dwg.defs.add( g )
+        grad = dwg.radialGradient(id='glare',center=(0.65,0.7), r=0.75)
+        grad.add_stop_color( color='#ffffff', offset='0',   opacity='0.7')
+        grad.add_stop_color( color='#ffffff', offset='0.1', opacity='0.5')
+        grad.add_stop_color( color='#ffffff', offset='0.6', opacity='0')
+        grad.add_stop_color( color='#000000', offset='0.6', opacity='0')
+        grad.add_stop_color( color='#000000', offset='0.75',opacity='0.05')
+        grad.add_stop_color( color='#000000', offset='0.85',opacity='0.15')
+        grad.add_stop_color( color='#000000', offset='1',   opacity='0.5')
+        dwg.defs.add( grad )
 
-
+        arrows = dwg.defs.add(dwg.g(id='arrows'))
 
         # background
         r = dwg.rect( id='background', insert=(0,0), size=(self.width,self.height), fill='white' )
@@ -190,299 +161,53 @@ class FieldplotDocument:
 
         # image group
         self.img = dwg.g(id='image')
+        dwg.add(self.img)
         self.img.translate(self.center[0], self.center[1])
         self.img.scale( self.unit, -self.unit )
-        dwg.add(self.img)
+
+        # add containers (groups for different elements)
+        self.img.add(dwg.g(id='fieldlines'))
+        # make sure sources are on top
+        self.img.add(dwg.g(id='sources'))
 
  
-    def __get_defs(self):
-        if 'defs' not in dir(self):
-            self.defs = etree.Element('defs')
-            self.desc.addnext(self.defs)
-        return self.defs
+        # title
+        # dwg.add( dwg.title( self.name ) )
+        # description
+        # self.desc = etree.SubElement(self.svg, 'desc')
+        # self.desc.text = ''
+        # self.desc.text += self.name + '\n'
+        # self.desc.text += 'created with VectorFieldPlot ' + version + '\n'
+        # self.desc.text += 'http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot\n'
+        # if commons:
+            # self.desc.text += """
+            # about: http://commons.wikimedia.org/wiki/File:{0}.svg
+            # """.format(self.name)
+        # if self.license == 'GFDL-cc':
+            # self.desc.text += """rights: GNU Free Documentation license,
+        # Creative Commons Attribution ShareAlike license\n"""
+        # self.desc.text += '  '
  
-    def __check_fieldlines(self, linecolor='#000000', linewidth=1.):
-        if 'fieldlines' not in dir(self):
-            self.fieldlines = etree.SubElement(self.content, 'g')
-            self.fieldlines.set('id', 'fieldlines')
-            self.fieldlines.set('fill', 'none')
-            self.fieldlines.set('stroke', linecolor)
-            self.fieldlines.set('stroke-width',
-                str(linewidth / self.unit))
-            self.fieldlines.set('stroke-linejoin', 'round')
-            self.fieldlines.set('stroke-linecap', 'round')
-        if 'count_fieldlines' not in dir(self): self.count_fieldlines = 0
- 
-    def __check_symbols(self):
-        if 'symbols' not in dir(self):
-            self.symbols = etree.SubElement(self.content, 'g')
-            self.symbols.set('id', 'symbols')
-        if 'count_symbols' not in dir(self): self.count_symbols = 0
- 
-    def __check_whitespot(self):
-        if 'whitespot' not in dir(self):
-            self.whitespot = etree.SubElement(
-                self.__get_defs(), 'radialGradient')
-            self.whitespot.set('id', 'white_spot')
-            for attr, val in [['cx', '0.65'], ['cy', '0.7'], ['r', '0.75']]:
-                self.whitespot.set(attr, val)
-            for col, of, op in [['#ffffff', '0', '0.7'],
-                ['#ffffff', '0.1', '0.5'], ['#ffffff', '0.6', '0'],
-                ['#000000', '0.6', '0'], ['#000000', '0.75', '0.05'],
-                ['#000000', '0.85', '0.15'], ['#000000', '1', '0.5']]:
-                stop = etree.SubElement(self.whitespot, 'stop')
-                stop.set('stop-color', col)
-                stop.set('offset', of)
-                stop.set('stop-opacity', op)
- 
-    def __get_arrowname(self, fillcolor='#000000'):
-        if 'arrows' not in dir(self):
-            self.arrows = {}
-        if fillcolor not in self.arrows.iterkeys():
-            arrow = etree.SubElement(self.__get_defs(), 'path')
-            self.arrows[fillcolor] = arrow
-            arrow.set('id', 'arrow' + str(len(self.arrows)))
-            arrow.set('stroke', 'none')
-            arrow.set('fill', fillcolor)
-            arrow.set('transform', 'scale({0})'.format(1. / self.unit))
-            arrow.set('d',
-                'M {0},0 L {1},{3} L {2},0 L {1},-{3} L {0},0 Z'.format(
-                self.arrow_geo['x_nock'], self.arrow_geo['x_tail'],
-                self.arrow_geo['x_head'], self.arrow_geo['width'] / 2.))
-        return self.arrows[fillcolor].get('id')
- 
-    def draw_charges(self, field, scale=1.):
-        if 'monopoles' not in field.elements: return
-        charges = field.elements['monopoles']
-        self.__check_symbols()
-        self.__check_whitespot()
- 
-        for charge in charges:
-
-          self.count_symbols += 1
-          dwg = self.dwg
-          img = self.img
-          g = dwg.g(id='charge{0}'.format(self.count_symbols))
-          c = dwg.circle(r=14, fill=('blue' if charge[2] < 0 else 'red') )
-          g.add( c )
-          c = dwg.circle(r=14,fill='url(#white_spot)',stroke='black',stroke_width=2)
-          g.add( c )
-          p = dwg.path()
-          if charge[2] < 0:
-            p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
-          else:
-            p.push('M 2,2 V 8 H -2 V 2 H -8 V -2')
-            p.push(' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
-          g.add(p)
-          g.translate(charge[0], charge[1])
-          g.scale(float(scale)/self.unit)
-          img.add( g )
-
-          self.symbols.append( etree.XML(g.tostring()) )
-
-    def draw_currents(self, field, scale=1.):
-        if ('wires' not in field.elements
-            and 'ringcurrents' not in field.elements):
-            return
-        self.__check_symbols()
-        self.__check_whitespot()
-        currents = []
-        if 'wires' in field.elements:
-            for i in field.elements['wires']:
-                currents.append(i)
-        if 'ringcurrents' in field.elements:
-            for i in field.elements['ringcurrents']:
-                currents.append(list(i[:2] + rot([0., i[3]], i[2])) + [i[-1]])
-                currents.append(list(i[:2] - rot([0., i[3]], i[2])) + [-i[-1]])
- 
-        for cur in currents:
-            c_group = etree.SubElement(self.symbols, 'g')
-            self.count_symbols += 1
-            if cur[-1] >= 0.: direction = 'out'
-            else: direction = 'in'
-            c_group.set('id',
-                'current_{0}{1}'.format(direction, self.count_symbols))
-            c_group.set('transform',
-                'translate({0},{1}) scale({2},{2})'.format(
-                cur[0], cur[1], float(scale) / self.unit))
- 
-            #### current drawing ####
-            c_bg = etree.SubElement(c_group, 'circle')
-            c_shade = etree.SubElement(c_group, 'circle')
-            c_bg.set('style', 'fill:#b0b0b0; stroke:none')
-            for attr, val in [['cx', '0'], ['cy', '0'], ['r', '14']]:
-                c_bg.set(attr, val)
-                c_shade.set(attr, val)
-            c_shade.set('style',
-                'fill:url(#white_spot); stroke:#000000; stroke-width:2')
-            if cur[-1] >= 0.: # dot
-                c_symb = etree.SubElement(c_group, 'circle')
-                c_symb.set('cx', '0')
-                c_symb.set('cy', '0')
-                c_symb.set('r', '4')
-            else: # cross
-                c_symb = etree.SubElement(c_group, 'path')
-                c_symb.set('d', 'M {1},-{0} L {0},-{1} L {2},{3} L {0},{1} \
-L {1},{0} {3},{2} L -{1},{0} L -{0},{1} L -{2},{3} L -{0},-{1} L -{1},-{0} \
-L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
-                c_symb.set('style', 'fill:#000000; stroke:none')
- 
-    def draw_magnets(self, field):
-        if 'coils' not in field.elements: return
-        coils = field.elements['coils']
-        self.__check_symbols()
- 
-        for coil in coils:
-            m_group = etree.SubElement(self.symbols, 'g')
-            self.count_symbols += 1
-            m_group.set('id', 'magnet{0}'.format(self.count_symbols))
-            m_group.set('transform',
-                'translate({0},{1}) rotate({2})'.format(
-                coil[0], coil[1], degrees(coil[2])))
- 
-            #### magnet drawing ####
-            r = coil[3]; l = coil[4]
-            colors = ['#00cc00', '#ff0000']
-            SN = ['S', 'N']
-            if coil[5] < 0.:
-                colors.reverse()
-                SN.reverse()
-            m_defs = etree.SubElement(m_group, 'defs')
-            m_gradient = etree.SubElement(m_defs, 'linearGradient')
-            m_gradient.set('id', 'magnetGrad{0}'.format(self.count_symbols))
-            for attr, val in [['x1', '0'], ['x2', '0'], ['y1', str(coil[3])],
-                ['y2', str(-coil[3])], ['gradientUnits', 'userSpaceOnUse']]:
-                m_gradient.set(attr, val)
-            for col, of, opa in [['#000000', '0', '0.125'],
-                ['#ffffff', '0.07', '0.125'], ['#ffffff', '0.25', '0.5'],
-                ['#ffffff', '0.6', '0.2'], ['#000000', '1', '0.33']]:
-                stop = etree.SubElement(m_gradient, 'stop')
-                stop.set('stop-color', col)
-                stop.set('offset', of)
-                stop.set('stop-opacity', opa)
-            for i in [0, 1]:
-                rect = etree.SubElement(m_group, 'rect')
-                for attr, val in [['x', [-l, 0][i]], ['y', -r],
-                    ['width', [2*l, l][i]], ['height', 2 * r],
-                    ['style', 'fill:{0}; stroke:none'.format(colors[i])]]:
-                    rect.set(attr, str(val))
-            rect = etree.SubElement(m_group, 'rect')
-            for attr, val in [['x', -l], ['y', -r],
-                ['width', 2 * l], ['height', 2 * r],
-                ['style', 'fill:url(#magnetGrad{0}); stroke-width:{1}; stroke-linejoin:miter; stroke:#000000'.format(self.count_symbols, 4. / self.unit)]]:
-                rect.set(attr, str(val))
-            for i in [0, 1]:
-                text = etree.SubElement(m_group, 'text')
-                for attr, val in [['text-anchor', 'middle'], ['y', -r],
-                    ['transform', 'translate({0},{1}) scale({2},-{2})'.format(
-                    [-0.65, 0.65][i] * l, -0.44 * r, r / 100.)],
-                    ['style', 'fill:#000000; stroke:none; ' +
-                    'font-size:120px; font-family:Bitstream Vera Sans']]:
-                    text.set(attr, str(val))
-                    text.text = SN[i]
- 
-    def draw_line(self, fieldline, maxdist=10., linewidth=2.,
-        linecolor='#000000', attributes=[], arrows_style=None):
-        '''
-        draws a calculated fieldline from a FieldLine object
-        to the FieldplotDocument svg image
-        '''
-        self.__check_fieldlines(linecolor, linewidth)
-        self.count_fieldlines += 1
- 
-        bounds = {}
-        bounds['x0'] = -(self.center[0] + 0.5 * linewidth) / self.unit
-        bounds['y0'] = -(self.height - self.center[1] +
-            0.5 * linewidth) / self.unit
-        bounds['x1'] = (self.width - self.center[0] +
-            0.5 * linewidth) / self.unit
-        bounds['y1'] = (self.center[1] + 0.5 * linewidth) / self.unit
- 
-        # fetch the polyline from the fieldline object
-        polylines = fieldline.get_polylines(self.digits, maxdist, bounds)
-        if len(polylines) == 0: return
- 
-        line = etree.Element('path')
-        if self.fieldlines.get('stroke') != linecolor:
-            line.set('stroke', linecolor)
-        if self.fieldlines.get('stroke-width') != str(linewidth / self.unit):
-            line.set('stroke-width', str(linewidth / self.unit))
-        for attr, val in attributes:
-            line.set(attr, val)
- 
-        #### line drawing ####
-        path_data = []
-        for polyline in polylines:
-            line_points = polyline['path']
-            for i, p in enumerate(line_points):
-                # go through all points, draw them if line segment is visible
-                ptext = '{1:.{0}f},{2:.{0}f}'.format(
-                    int(ceil(self.digits)), p[0], p[1])
-                if i == 0: path_data.append('M ' + ptext)
-                else: path_data.append('L ' + ptext)
-        # close path if possible
-        if (vabs(polylines[0]['path'][0] - polylines[-1]['path'][-1])
-            < .1**self.digits):
-            closed = True
-            if len(polylines) == 1:
-                path_data.append('Z')
-            elif len(polylines) > 1:
-                # rearrange array cyclic
-                path_data.pop(0)
-                while path_data[0][0] != 'M':
-                    path_data.append(path_data.pop(0))
-        else: closed = False
- 
-        path = ' '.join(path_data)
-        line.set('d', path)
- 
-        if arrows_style == None:
-            # include path directly into document structure
-            line.set('id', 'fieldline{0}'.format(self.count_fieldlines))
-            self.fieldlines.append(line)
-        else:
-            line_and_arrows = etree.SubElement(self.fieldlines, 'g')
-            line_and_arrows.set('id', 'fieldline' + str(self.count_fieldlines))
-            line_and_arrows.append(line)
-            line_and_arrows.append(self.__draw_arrows(
-                arrows_style, linewidth, polylines, linecolor, closed))
-
-    def draw_vectors(self, vectors, linewidth=2.,
-        linecolor='#000000', attributes=[], arrows_style=None):
-
-      arrowhead = etree.SubElement( self.__get_defs(), 'marker')
-      arrowhead.set('id', 'arrowhead')
-      arrowhead.set('orient', 'auto')
-      arrowhead.set('refX', '1')
-      arrowhead.set('refY', '5')
-      arrowhead.set('markerWidth', '3')
-      arrowhead.set('markerHeight', '3')
-      arrowhead.set('viewBox', '0 0 10 10')
-
-      path = etree.SubElement(arrowhead, 'path')
-      path.set('fill', linecolor)
-      path.set('d', 'M 0 0 L 10 5 L 0 10 z' )
 
 
-      self.fieldvectors = etree.SubElement(self.content, 'g')
-      self.fieldvectors.set('id', 'fieldvectors')
-      self.fieldvectors.set('fill', 'none')
-      self.fieldvectors.set('stroke', linecolor)
-      self.fieldvectors.set('stroke-width', str(linewidth / self.unit))
-      for x,y,F in vectors.scaled_vectors:
-        line = etree.Element('line')
-        line.set('x1', '%f'%x )
-        line.set('y1', '%f'%y )
-        line.set('x2', '%f'%(x+F[0]) )
-        line.set('y2', '%f'%(y+F[1]) )
-        line.set('marker-end', 'url(#arrowhead)' )
 
-        self.fieldvectors.append(line)
+        # misc info
+        self.arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
 
 
- 
-    def __draw_arrows(self, arrows_style, linewidth, polylines,
-        linecolor='#000000', closed=False):
+
+
+
+    def __add_arrow(self,color):
+      arrow = self.dwg.path(id=color+'_arrow', stroke='none', fill=color)
+      arrow.push( 'M {0},0 L {1},{3} L {2},0 L {1},-{3} L {0},0 Z'.format(
+          self.arrow_geo['x_nock'], self.arrow_geo['x_tail'],
+          self.arrow_geo['x_head'], self.arrow_geo['width'] / 2.))
+      arrow.scale(1./self.unit)
+
+      get_elem_by_id( self.dwg.defs, 'arrows' ).add(arrow)
+
+    def __get_arrows_on_polylines(self, polylines, arrows_style, linewidth, linecolor='#000000', closed=False):
         '''
         draws arrows on polylines.
         options in "arrows_style":
@@ -508,11 +233,9 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
             offsets = arrows_style['offsets']
         if 'fixed_ends' in arrows_style:
             fixed_ends = arrows_style['fixed_ends']
-        if scale == 1.: scaletext = ''
-        else: scaletext = ' scale({0})'.format(scale)
  
-        arrows = etree.Element('g')
-        arrows.set('id', 'arrows' + str(self.count_fieldlines))
+        arrows = []
+        arrows_def = get_elem_by_id( self.dwg.defs, 'arrows' )
         for j, polyline in enumerate(polylines):
             line_points = polyline['path']
             mina = min_arrows
@@ -587,47 +310,287 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
                     p = p0 + sc.dot(p1 - p0, v) * v / vabs(v)**2
                     angle = atan2(v[1], v[0])
  
-                arrow = etree.SubElement(arrows, 'use')
-                arrow.set('{http://www.w3.org/1999/xlink}href',
-                    '#' + self.__get_arrowname(linecolor))
-                arrow.set('transform', ('translate({0:.'
-                    + str(int(ceil(self.digits))) + 'f},{1:.'
-                    + str(int(ceil(self.digits)))
-                    + 'f}) rotate({2:.2f})').format(p[0], p[1],
-                    degrees(angle)) + scaletext)
+                arrow = self.dwg.use( get_elem_by_id( arrows_def, linecolor+"_arrow" ) )
+                arrow.translate( p[0], p[1] )
+                arrow.rotate(degrees(angle))
+                arrow.scale(scale)
+
+                arrows.append(arrow)
+
         return arrows
  
-    def draw_object(self, name, params, group=None):
-        '''
-        Draw arbitraty svg object.
-        Params must be a dictionary of valid svg parameters.
-        '''
+
+
+
+
+
+
+
+
+ 
+    def draw_charges(self, field, scale=1.):
+        if 'monopoles' not in field.elements:
+          return
+        charges = field.elements['monopoles']
+
+        dwg = self.dwg
+        img = self.img
+
+        container = get_elem_by_id(self.img,'sources')
+ 
+        for i,charge in enumerate(charges):
+          g = dwg.g(id='charge{0}'.format(i))
+          c = dwg.circle(r=14, fill=('blue' if charge[2] < 0 else 'red') )
+          g.add( c )
+          c = dwg.circle(r=14,fill='url(#glare)',stroke='black',stroke_width=2)
+          g.add( c )
+          p = dwg.path()
+          if charge[2] < 0:
+            p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
+          else:
+            p.push('M 2,2 V 8 H -2 V 2 H -8 V -2')
+            p.push(' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
+          g.add(p)
+          g.translate(charge[0], charge[1])
+          g.scale(float(scale)/self.unit)
+          container.add( g )
+
+    # NEEDS PORTED
+    def draw_currents(self, field, scale=1.):
+        if ('wires' not in field.elements and 'ringcurrents' not in field.elements):
+            return
         self.__check_symbols()
-        if group == None:
-            obj = etree.SubElement(self.symbols, name)
-        else:
-            obj = etree.SubElement(group, name)
-        for i, j in params.iteritems():
-            obj.set(str(i), str(j))
-        return obj
+        self.__check_whitespot()
+        currents = []
+        if 'wires' in field.elements:
+            for i in field.elements['wires']:
+                currents.append(i)
+        if 'ringcurrents' in field.elements:
+            for i in field.elements['ringcurrents']:
+                currents.append(list(i[:2] + rot([0., i[3]], i[2])) + [i[-1]])
+                currents.append(list(i[:2] - rot([0., i[3]], i[2])) + [-i[-1]])
+ 
+        for cur in currents:
+            c_group = etree.SubElement(self.symbols, 'g')
+            self.count_symbols += 1
+            if cur[-1] >= 0.: direction = 'out'
+            else: direction = 'in'
+            c_group.set('id',
+                'current_{0}{1}'.format(direction, self.count_symbols))
+            c_group.set('transform',
+                'translate({0},{1}) scale({2},{2})'.format(
+                cur[0], cur[1], float(scale) / self.unit))
+ 
+            #### current drawing ####
+            c_bg = etree.SubElement(c_group, 'circle')
+            c_shade = etree.SubElement(c_group, 'circle')
+            c_bg.set('style', 'fill:#b0b0b0; stroke:none')
+            for attr, val in [['cx', '0'], ['cy', '0'], ['r', '14']]:
+                c_bg.set(attr, val)
+                c_shade.set(attr, val)
+            c_shade.set('style',
+                'fill:url(#glare); stroke:#000000; stroke-width:2')
+            if cur[-1] >= 0.: # dot
+                c_symb = etree.SubElement(c_group, 'circle')
+                c_symb.set('cx', '0')
+                c_symb.set('cy', '0')
+                c_symb.set('r', '4')
+            else: # cross
+                c_symb = etree.SubElement(c_group, 'path')
+                c_symb.set('d', 'M {1},-{0} L {0},-{1} L {2},{3} L {0},{1} \
+L {1},{0} {3},{2} L -{1},{0} L -{0},{1} L -{2},{3} L -{0},-{1} L -{1},-{0} \
+L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
+                c_symb.set('style', 'fill:#000000; stroke:none')
+ 
+    # NEEDS PORTED
+    def draw_magnets(self, field):
+        if 'coils' not in field.elements: return
+        coils = field.elements['coils']
+        self.__check_symbols()
+ 
+        for coil in coils:
+            m_group = etree.SubElement(self.symbols, 'g')
+            self.count_symbols += 1
+            m_group.set('id', 'magnet{0}'.format(self.count_symbols))
+            m_group.set('transform',
+                'translate({0},{1}) rotate({2})'.format(
+                coil[0], coil[1], degrees(coil[2])))
+ 
+            #### magnet drawing ####
+            r = coil[3]; l = coil[4]
+            colors = ['#00cc00', '#ff0000']
+            SN = ['S', 'N']
+            if coil[5] < 0.:
+                colors.reverse()
+                SN.reverse()
+            m_defs = etree.SubElement(m_group, 'defs')
+            m_gradient = etree.SubElement(m_defs, 'linearGradient')
+            m_gradient.set('id', 'magnetGrad{0}'.format(self.count_symbols))
+            for attr, val in [['x1', '0'], ['x2', '0'], ['y1', str(coil[3])],
+                ['y2', str(-coil[3])], ['gradientUnits', 'userSpaceOnUse']]:
+                m_gradient.set(attr, val)
+            for col, of, opa in [['#000000', '0', '0.125'],
+                ['#ffffff', '0.07', '0.125'], ['#ffffff', '0.25', '0.5'],
+                ['#ffffff', '0.6', '0.2'], ['#000000', '1', '0.33']]:
+                stop = etree.SubElement(m_gradient, 'stop')
+                stop.set('stop-color', col)
+                stop.set('offset', of)
+                stop.set('stop-opacity', opa)
+            for i in [0, 1]:
+                rect = etree.SubElement(m_group, 'rect')
+                for attr, val in [['x', [-l, 0][i]], ['y', -r],
+                    ['width', [2*l, l][i]], ['height', 2 * r],
+                    ['style', 'fill:{0}; stroke:none'.format(colors[i])]]:
+                    rect.set(attr, str(val))
+            rect = etree.SubElement(m_group, 'rect')
+            for attr, val in [['x', -l], ['y', -r],
+                ['width', 2 * l], ['height', 2 * r],
+                ['style', 'fill:url(#magnetGrad{0}); stroke-width:{1}; stroke-linejoin:miter; stroke:#000000'.format(self.count_symbols, 4. / self.unit)]]:
+                rect.set(attr, str(val))
+            for i in [0, 1]:
+                text = etree.SubElement(m_group, 'text')
+                for attr, val in [['text-anchor', 'middle'], ['y', -r],
+                    ['transform', 'translate({0},{1}) scale({2},-{2})'.format(
+                    [-0.65, 0.65][i] * l, -0.44 * r, r / 100.)],
+                    ['style', 'fill:#000000; stroke:none; ' +
+                    'font-size:120px; font-family:Bitstream Vera Sans']]:
+                    text.set(attr, str(val))
+                    text.text = SN[i]
+ 
+    def draw_fieldline(self, fieldline, maxdist=10., linewidth=2., linecolor='black', attributes=[], arrows_style=None):
+        '''
+        draws a calculated fieldline from a FieldLine object
+        to the FieldplotDocument svg image
+        '''
+ 
+        bounds = {}
+        bounds['x0'] = -(self.center[0] + 0.5 * linewidth) / self.unit
+        bounds['y0'] = -(self.height - self.center[1] +
+            0.5 * linewidth) / self.unit
+        bounds['x1'] = (self.width - self.center[0] +
+            0.5 * linewidth) / self.unit
+        bounds['y1'] = (self.center[1] + 0.5 * linewidth) / self.unit
+ 
+        # fetch the polyline from the fieldline object
+        polylines = fieldline.get_polylines(self.digits, maxdist, bounds)
+        if len(polylines) == 0:
+          return
+ 
+        dwg = self.dwg
+        img = self.img
+
+        if get_elem_by_id( self.dwg.defs,'arrows.'+linecolor ) is None:
+          self.__add_arrow(linecolor)
+
+        container = get_elem_by_id(self.img,'fieldlines')
+
+        # path object that will be the field line
+        path = dwg.path(stroke=linecolor, stroke_width=linewidth/self.unit, fill='none')
+        for k,v in attributes:
+          p[k] = v
+
+        #### line drawing ####
+        path_data = []
+        for polyline in polylines:
+          line_points = polyline['path']
+          for i, p in enumerate(line_points):
+            # go through all points, draw them if line segment is visible
+            ptext = '{1:.{0}f},{2:.{0}f}'.format( int(ceil(self.digits)), p[0], p[1])
+            if i == 0: path_data.append('M ' + ptext)
+            else: path_data.append('L ' + ptext)
+        # close path if possible
+        if (vabs(polylines[0]['path'][0] - polylines[-1]['path'][-1]) < .1**self.digits):
+          closed = True
+          if len(polylines) == 1:
+            path_data.append('Z')
+          elif len(polylines) > 1:
+            # rearrange array cyclic
+            path_data.pop(0)
+            while path_data[0][0] != 'M':
+              path_data.append(path_data.pop(0))
+        else: closed = False
+ 
+        path.push(' '.join(path_data))
+
+        g = dwg.g(id='fieldline{0}'.format(len(container.elements)))
+        g.add(path)
+
+        if not arrows_style is None:
+          arrows = self.__get_arrows_on_polylines( polylines, arrows_style, linewidth, linecolor, closed )
+          for a in arrows:
+            g.add(a)
+
+        container.add(g)
+
+    # legacy method name
+    draw_line = draw_fieldline
+
+
+    # NEEDS PORTED
+    def draw_vectors(self, vectors, linewidth=2.,
+        linecolor='#000000', attributes=[], arrows_style=None):
+
+      arrowhead = etree.SubElement( self.__get_defs(), 'marker')
+      arrowhead.set('id', 'arrowhead')
+      arrowhead.set('orient', 'auto')
+      arrowhead.set('refX', '1')
+      arrowhead.set('refY', '5')
+      arrowhead.set('markerWidth', '3')
+      arrowhead.set('markerHeight', '3')
+      arrowhead.set('viewBox', '0 0 10 10')
+
+      path = etree.SubElement(arrowhead, 'path')
+      path.set('fill', linecolor)
+      path.set('d', 'M 0 0 L 10 5 L 0 10 z' )
+
+
+      self.fieldvectors = etree.SubElement(self.content, 'g')
+      self.fieldvectors.set('id', 'fieldvectors')
+      self.fieldvectors.set('fill', 'none')
+      self.fieldvectors.set('stroke', linecolor)
+      self.fieldvectors.set('stroke-width', str(linewidth / self.unit))
+      for x,y,F in vectors.scaled_vectors:
+        line = etree.Element('line')
+        line.set('x1', '%f'%x )
+        line.set('y1', '%f'%y )
+        line.set('x2', '%f'%(x+F[0]) )
+        line.set('y2', '%f'%(y+F[1]) )
+        line.set('marker-end', 'url(#arrowhead)' )
+
+        self.fieldvectors.append(line)
+
+
  
     def write(self, filename=None):
-        # put symbols on top
-        if 'content' in dir(self):
-            for element in self.content:
-                if element.get('id').startswith('symbols'):
-                    self.content.append(element)
- 
-        # write content to file
-        if filename == None: filename = self.name
-        outfile = open(filename + '.svg', 'w')
-        outfile.write(etree.tostring(self.svg, xml_declaration=True,
-            pretty_print=True, encoding='utf-8'))
-        outfile.close()
-        print 'image written to', filename + '.svg'
+      self.dwg.save()
+      print 'image written to', self.dwg.filename
 
-        self.dwg.save()
-        self.dwg.write(sys.stdout)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
  
 class FieldLine:
     '''
