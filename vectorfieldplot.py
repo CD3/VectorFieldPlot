@@ -22,9 +22,6 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see http://www.gnu.org/licenses/
 '''
  
-version = '1.3'
- 
- 
 import sys
 from math import *
 import bisect
@@ -36,6 +33,7 @@ import scipy.optimize as op
 import scipy.integrate as ig
  
  
+version = '2.0-alpha'
  
 # some helper functions
 def vabs(x):
@@ -125,14 +123,13 @@ class FieldplotDocument:
     '''
     creates a svg document structure using lxml.etree
     '''
-    def __init__ (self, name, width=800, height=600, digits=3.5, unit=100, center=None, license='GFDL-cc', commons=False):
+    def __init__ (self, name, width=800, height=600, digits=3.5, unit=100, center=None, license='CC-BY', author="UNKNOWN"):
         self.name = name
         self.width = float(width)
         self.height = float(height)
         self.digits = float(digits)
         self.unit = float(unit)
         self.license = license
-        self.commons = commons
         if center == None: self.center = [width / 2., height / 2.]
         else: self.center = [float(i) for i in center]
 
@@ -171,24 +168,11 @@ class FieldplotDocument:
         self.img.add(dwg.g(id='sources'))
 
  
-        # title
-        # dwg.add( dwg.title( self.name ) )
-        # description
-        # self.desc = etree.SubElement(self.svg, 'desc')
-        # self.desc.text = ''
-        # self.desc.text += self.name + '\n'
-        # self.desc.text += 'created with VectorFieldPlot ' + version + '\n'
-        # self.desc.text += 'http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot\n'
-        # if commons:
-            # self.desc.text += """
-            # about: http://commons.wikimedia.org/wiki/File:{0}.svg
-            # """.format(self.name)
-        # if self.license == 'GFDL-cc':
-            # self.desc.text += """rights: GNU Free Documentation license,
-        # Creative Commons Attribution ShareAlike license\n"""
-        # self.desc.text += '  '
- 
-
+        # title and description
+        desc = ''
+        desc += 'created by '+author+' using VectorFieldPlot ' + version + ' (https://github.com/CD3/VectorFieldPlot)\n'
+        desc += 'license: '+self.license+' (https://creativecommons.org/licenses/)\n'
+        dwg.set_desc( title=name, desc=desc ) 
 
 
         # misc info
