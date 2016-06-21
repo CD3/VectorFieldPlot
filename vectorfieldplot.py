@@ -131,23 +131,23 @@ def grad( f, p ):
 
   return sc.array([fx,fy])
 
-def rkstep(self, p, v, f, h):
-    '''
-    fourth order Runge Kutta step
-    '''
-    k1 = h * v
-    k2 = h * f(p + k1 / 2.)
-    k3 = h * f(p + k2 / 2.)
-    k4 = h * f(p + k3)
-    p1 = p + (k1 + 2. * (k2 + k3) + k4) / 6.
-    return p1
+def in_bounds(bounds,p):
+  '''Check if a point is within a given bounding box.'''
+  if bounds is None:
+    return True
+  return p[0] >= bounds['x0'] and p[0] <= bounds['x1'] and p[1] >= bounds['y0'] and p[1] <= bounds['y1']
  
  
+
+
+
+
+
 
 
 class FieldplotDocument:
     '''
-    creates a svg document structure using lxml.etree
+    Class representing an image.
     '''
     def __init__ (self, name, width=800, height=600, digits=3.5, unit=100, center=None, license='CC-BY', author="UNKNOWN"):
         self.name = name
@@ -330,251 +330,79 @@ class FieldplotDocument:
 
         return arrows
 
- 
-    def draw_charges(self, field, scale=1.):
-        if 'monopoles' not in field.elements:
-          return
-        charges = field.elements['monopoles']
+    def __get_bounds(self):
+        bounds = {}
+        bounds['x0'] = -self.center[0] / self.unit
+        bounds['y0'] = -(self.height - self.center[1]) / self.unit
+        bounds['x1'] = (self.width - self.center[0]) / self.unit
+        bounds['y1'] =  self.center[1] / self.unit
 
-        dwg = self.dwg
-        img = self.img
+        return bounds
 
-        container = get_elem_by_id(self.img,'sources')
- 
-        for i,charge in enumerate(charges):
-          g = dwg.g(id='charge{0}'.format(i))
-          c = dwg.circle(r=14, fill=('blue' if charge[2] < 0 else 'red') )
-          g.add( c )
-          c = dwg.circle(r=14,fill='url(#glare)',stroke='black',stroke_width=2)
-          g.add( c )
-          p = dwg.path()
-          if charge[2] < 0:
-            p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
-          else:
-            p.push('M 2,2 V 8 H -2 V 2 H -8 V -2')
-            p.push(' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
-          g.add(p)
-          g.translate(charge[0], charge[1])
-          g.scale(float(scale)/self.unit)
+
+    def __make_pointcharge(self, source, id, scale):
+      dwg = self.dwg
+
+      g = dwg.g(id=id)
+      c = dwg.circle(r=14, fill=('blue' if source.q < 0 else 'red') )
+      g.add( c )
+      c = dwg.circle(r=14,fill='url(#glare)',stroke='black',stroke_width=2)
+      g.add( c )
+      p = dwg.path()
+      if source.q < 0:
+        p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
+      else:
+        p.push('M 2,2 V 8 H -2 V 2 H -8 V -2')
+        p.push(' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
+      g.add(p)
+      g.translate(*source.pos())
+      g.scale(float(scale)/self.unit)
+
+      return g
+
+
+    def draw_sources(self, sources, scale=1., stypes='All'):
+
+      dwg = self.dwg
+      img = self.img
+
+
+      container = get_elem_by_id(self.img,'sources')
+      for i,source in enumerate(sources.sources):
+        if stypes == 'All' or isinstance( source, stypes ):
+          g = dwg.g(id="None")
+          if isinstance( source, PointCharge ):
+            g = self.__make_pointcharge( source, 'charge{0}'.format(i), scale )
           container.add( g )
 
-    def draw_fieldline(self, fieldline, maxdist=10., linewidth=2., linecolor='black', attributes=[], arrows_style=None):
-        '''
-        draws a calculated fieldline from a FieldLine object
-        to the FieldplotDocument svg image
-        '''
- 
-        bounds = {}
-        bounds['x0'] = -(self.center[0] + 0.5 * linewidth) / self.unit
-        bounds['y0'] = -(self.height - self.center[1] +
-            0.5 * linewidth) / self.unit
-        bounds['x1'] = (self.width - self.center[0] +
-            0.5 * linewidth) / self.unit
-        bounds['y1'] = (self.center[1] + 0.5 * linewidth) / self.unit
- 
-        # fetch the polyline from the fieldline object
-        polylines = fieldline.get_polylines(self.digits, maxdist, bounds)
-        if len(polylines) == 0:
-          return
- 
-        dwg = self.dwg
-        img = self.img
 
-        if get_elem_by_id( self.dwg.defs,'arrows.'+linecolor ) is None:
-          self.__add_arrow(linecolor)
-
-        container = get_elem_by_id(self.img,'fieldlines')
-
-        # path object that will be the field line
-        path = dwg.path(stroke=linecolor, stroke_width=linewidth/self.unit, fill='none')
-        for k,v in attributes:
-          p[k] = v
-
-        #### line drawing ####
-        path_data = []
-        for polyline in polylines:
-          line_points = polyline['path']
-          for i, p in enumerate(line_points):
-            # go through all points, draw them if line segment is visible
-            ptext = '{1:.{0}f},{2:.{0}f}'.format( int(ceil(self.digits)), p[0], p[1])
-            if i == 0: path_data.append('M ' + ptext)
-            else: path_data.append('L ' + ptext)
-        # close path if possible
-        if (vabs(polylines[0]['path'][0] - polylines[-1]['path'][-1]) < .1**self.digits):
-          closed = True
-          if len(polylines) == 1:
-            path_data.append('Z')
-          elif len(polylines) > 1:
-            # rearrange array cyclic
-            path_data.pop(0)
-            while path_data[0][0] != 'M':
-              path_data.append(path_data.pop(0))
-        else: closed = False
- 
-        path.push(' '.join(path_data))
-
-        g = dwg.g(id='fieldline{0}'.format(len(container.elements)))
-        g.add(path)
-
-        if not arrows_style is None:
-          arrows = self.__get_arrows_on_polylines( polylines, arrows_style, linewidth, linecolor, closed )
-          for a in arrows:
-            g.add(a)
-
-        container.add(g)
-
-
-    def draw_line(self, line, linewidth=2, linecolor='black'):
-      nodes = line.get_nodes()
+    def __draw_line(self,line,linewidth,linecolor):
+      bounds = self.__get_bounds()
+      line = line.get_line(bounds)
+      nodes = line['nodes']
+      if len(nodes) < 2:
+        nodes.append(nodes[0])
       path = Path()
       start = end = complex(*nodes[0]['p'])
       for i in range(1,len(nodes)):
         end = complex(*nodes[i]['p'])
         path.append( Line( start,end ) )
         start = end
+      if line['closed']:
+        path.append( Line( path[-1].end, path[0].start ) )
+        path.closed = True
+
 
       container = get_elem_by_id(self.img,'equipotentiallines')
       line = self.dwg.path( path.d(), stroke=linecolor,stroke_width=linewidth/self.unit,fill='none' )
       container.add( line )
 
+    def draw_fieldline(self, line, linewidth=2, linecolor='black'):
+      self.__draw_line( line, linewidth, linecolor )
 
-    # NEEDS PORTED
-    def draw_currents(self, field, scale=1.):
-        if ('wires' not in field.elements and 'ringcurrents' not in field.elements):
-            return
-        self.__check_symbols()
-        self.__check_whitespot()
-        currents = []
-        if 'wires' in field.elements:
-            for i in field.elements['wires']:
-                currents.append(i)
-        if 'ringcurrents' in field.elements:
-            for i in field.elements['ringcurrents']:
-                currents.append(list(i[:2] + rot([0., i[3]], i[2])) + [i[-1]])
-                currents.append(list(i[:2] - rot([0., i[3]], i[2])) + [-i[-1]])
- 
-        for cur in currents:
-            c_group = etree.SubElement(self.symbols, 'g')
-            self.count_symbols += 1
-            if cur[-1] >= 0.: direction = 'out'
-            else: direction = 'in'
-            c_group.set('id',
-                'current_{0}{1}'.format(direction, self.count_symbols))
-            c_group.set('transform',
-                'translate({0},{1}) scale({2},{2})'.format(
-                cur[0], cur[1], float(scale) / self.unit))
- 
-            #### current drawing ####
-            c_bg = etree.SubElement(c_group, 'circle')
-            c_shade = etree.SubElement(c_group, 'circle')
-            c_bg.set('style', 'fill:#b0b0b0; stroke:none')
-            for attr, val in [['cx', '0'], ['cy', '0'], ['r', '14']]:
-                c_bg.set(attr, val)
-                c_shade.set(attr, val)
-            c_shade.set('style',
-                'fill:url(#glare); stroke:#000000; stroke-width:2')
-            if cur[-1] >= 0.: # dot
-                c_symb = etree.SubElement(c_group, 'circle')
-                c_symb.set('cx', '0')
-                c_symb.set('cy', '0')
-                c_symb.set('r', '4')
-            else: # cross
-                c_symb = etree.SubElement(c_group, 'path')
-                c_symb.set('d', 'M {1},-{0} L {0},-{1} L {2},{3} L {0},{1} \
-L {1},{0} {3},{2} L -{1},{0} L -{0},{1} L -{2},{3} L -{0},-{1} L -{1},-{0} \
-L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
-                c_symb.set('style', 'fill:#000000; stroke:none')
- 
-    # NEEDS PORTED
-    def draw_magnets(self, field):
-        if 'coils' not in field.elements: return
-        coils = field.elements['coils']
-        self.__check_symbols()
- 
-        for coil in coils:
-            m_group = etree.SubElement(self.symbols, 'g')
-            self.count_symbols += 1
-            m_group.set('id', 'magnet{0}'.format(self.count_symbols))
-            m_group.set('transform',
-                'translate({0},{1}) rotate({2})'.format(
-                coil[0], coil[1], degrees(coil[2])))
- 
-            #### magnet drawing ####
-            r = coil[3]; l = coil[4]
-            colors = ['#00cc00', '#ff0000']
-            SN = ['S', 'N']
-            if coil[5] < 0.:
-                colors.reverse()
-                SN.reverse()
-            m_defs = etree.SubElement(m_group, 'defs')
-            m_gradient = etree.SubElement(m_defs, 'linearGradient')
-            m_gradient.set('id', 'magnetGrad{0}'.format(self.count_symbols))
-            for attr, val in [['x1', '0'], ['x2', '0'], ['y1', str(coil[3])],
-                ['y2', str(-coil[3])], ['gradientUnits', 'userSpaceOnUse']]:
-                m_gradient.set(attr, val)
-            for col, of, opa in [['#000000', '0', '0.125'],
-                ['#ffffff', '0.07', '0.125'], ['#ffffff', '0.25', '0.5'],
-                ['#ffffff', '0.6', '0.2'], ['#000000', '1', '0.33']]:
-                stop = etree.SubElement(m_gradient, 'stop')
-                stop.set('stop-color', col)
-                stop.set('offset', of)
-                stop.set('stop-opacity', opa)
-            for i in [0, 1]:
-                rect = etree.SubElement(m_group, 'rect')
-                for attr, val in [['x', [-l, 0][i]], ['y', -r],
-                    ['width', [2*l, l][i]], ['height', 2 * r],
-                    ['style', 'fill:{0}; stroke:none'.format(colors[i])]]:
-                    rect.set(attr, str(val))
-            rect = etree.SubElement(m_group, 'rect')
-            for attr, val in [['x', -l], ['y', -r],
-                ['width', 2 * l], ['height', 2 * r],
-                ['style', 'fill:url(#magnetGrad{0}); stroke-width:{1}; stroke-linejoin:miter; stroke:#000000'.format(self.count_symbols, 4. / self.unit)]]:
-                rect.set(attr, str(val))
-            for i in [0, 1]:
-                text = etree.SubElement(m_group, 'text')
-                for attr, val in [['text-anchor', 'middle'], ['y', -r],
-                    ['transform', 'translate({0},{1}) scale({2},-{2})'.format(
-                    [-0.65, 0.65][i] * l, -0.44 * r, r / 100.)],
-                    ['style', 'fill:#000000; stroke:none; ' +
-                    'font-size:120px; font-family:Bitstream Vera Sans']]:
-                    text.set(attr, str(val))
-                    text.text = SN[i]
- 
-    # NEEDS PORTED
-    def draw_vectors(self, vectors, linewidth=2.,
-        linecolor='#000000', attributes=[], arrows_style=None):
+    def draw_equipotentialline(self, line, linewidth=2, linecolor='red'):
+      self.__draw_line( line, linewidth, linecolor )
 
-      arrowhead = etree.SubElement( self.__get_defs(), 'marker')
-      arrowhead.set('id', 'arrowhead')
-      arrowhead.set('orient', 'auto')
-      arrowhead.set('refX', '1')
-      arrowhead.set('refY', '5')
-      arrowhead.set('markerWidth', '3')
-      arrowhead.set('markerHeight', '3')
-      arrowhead.set('viewBox', '0 0 10 10')
-
-      path = etree.SubElement(arrowhead, 'path')
-      path.set('fill', linecolor)
-      path.set('d', 'M 0 0 L 10 5 L 0 10 z' )
-
-
-      self.fieldvectors = etree.SubElement(self.content, 'g')
-      self.fieldvectors.set('id', 'fieldvectors')
-      self.fieldvectors.set('fill', 'none')
-      self.fieldvectors.set('stroke', linecolor)
-      self.fieldvectors.set('stroke-width', str(linewidth / self.unit))
-      for x,y,F in vectors.scaled_vectors:
-        line = etree.Element('line')
-        line.set('x1', '%f'%x )
-        line.set('y1', '%f'%y )
-        line.set('x2', '%f'%(x+F[0]) )
-        line.set('y2', '%f'%(y+F[1]) )
-        line.set('marker-end', 'url(#arrowhead)' )
-
-        self.fieldvectors.append(line)
-
-
- 
     def write(self, filename=None):
       self.dwg.save()
       print 'image written to', self.dwg.filename
@@ -599,547 +427,6 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
 
 
 
-
-
-
-
-
-class FieldLine:
-    '''
-    calculates field lines
-    '''
-    def __init__(self, field, start_p, start_v=None, start_d=None,
-        directions='forward', maxn=1000, maxr=300.0, hmax=1.0,
-        pass_dipoles=0, path_close_tol=5e-3, bounds_func=None,
-        stop_funcs=[None, None]):
-        '''
-        field: a field in which the line exists
-        start_p: [x0, y0]: where the line starts
-        start_v: [vx0, vy0]: optional start direction
-        start_d: [dx0, dy0]: optional dipole start direction (slope to x=1)
-        directions: forward, backward, both: bidirectional
-        unit: estimation for the scale of the scene
-        maxn: maximum number of steps
-        maxr: maximum number of units to depart from start
-        hmax: maximum number of units for stepsize
-        pass_dipoles: number of dipoles to be passed through (-1 = infinite)
-        '''
-        self.field = field
-        self.p_start = sc.array(start_p)
-        self.first_point = self.p_start
-        self.bounds_func = bounds_func
-        self.stop_funcs = stop_funcs
-        if start_v == None: self.v_start = None
-        else: self.v_start = sc.array(start_v)
-        if start_d == None: self.d_start = None
-        else: self.d_start = sc.array(start_d)
-        self.__create_nodes(directions, maxn, maxr, hmax,
-            pass_dipoles, path_close_tol)
- 
-    def __get_nearest_pole(self, p, v=None):
-        '''
-        returns distance to nearest pole
-        '''
-        p_near = self.first_point
-        d_near = vabs(self.first_point - p)
-        if not v is None: d_near *= 1.3 - cosv(v, self.first_point - p)
-        type_near = 'start'
-        mon = []
-        for ptype, poles in self.field.elements.iteritems():
-            if ptype not in ['monopoles', 'dipoles'] or len(poles) == 0:
-                continue
-            for pole in poles:
-                d = vabs(pole[:2] - p)
-                if not v is None: d *= 1.3 - cosv(v, pole[:2] - p)
-                if d < d_near:
-                    d_near = d
-                    p_near = pole
-                    type_near = ptype
-        return sc.array(p_near), type_near
- 
-    def __rkstep(self, p, v, f, h):
-        '''
-        fourth order Runge Kutta step
-        '''
-        k1 = h * v
-        k2 = h * f(p + k1 / 2.)
-        k3 = h * f(p + k2 / 2.)
-        k4 = h * f(p + k3)
-        p1 = p + (k1 + 2. * (k2 + k3) + k4) / 6.
-        return p1
- 
-    def __create_nodes_part(self, sign, maxn, maxr, hmax,
-        pass_dipoles, path_close_tol):
-        '''
-        executes integration from startpoint to one end
-        '''
-        # p is always the latest position
-        # v is always the latest normalized velocity
-        # h is always the latest step size
-        # l is always the summarized length
-        err = 5e-8 # error tolerance for integration
-        f = None
-        if sign >= 0.: f = lambda r:  vnorm( self.field.F(r) )
-        else:          f = lambda r: -vnorm( self.field.F(r) )
-        # first point
-        p = self.p_start
-        if not self.v_start is None:
-            v = vnorm(self.v_start) * sign
-        else:
-            v = f(p)
-        nodes = [{'p':p.copy(), 'v_in':None}]
-        xtol = 20. * err; ytol = path_close_tol
-        # initialize loop
-        h = (sqrt(5) - 1.) / 10.; h_old = h
-        l = 0.; i = 0
-        while i < maxn and l < maxr:
-            i += 1
-            if len(nodes) == 1 and not self.d_start is None:
-                # check for start from a dipole
-                h = vabs(self.d_start)
-                p = p + self.d_start
-                v = f(p)
-                nodes[-1]['v_out'] = h * vnorm(2.0 * vnorm(self.d_start) - v)
-                nodes.append({'p':p.copy(), 'v_in':h * v})
-            elif len(nodes) > 1:
-                # check for special cases
-                nearest_pole, pole_type = self.__get_nearest_pole(p, v)
-                vpole = nearest_pole[:2] - p
-                dpole = vabs(vpole)
-                vpole /= dpole
- 
-                cv = cosv(v, vpole); sv = sinv(v, vpole)
-                if ((dpole < 0.1 or h >= dpole) and (cv > 0.9 or dpole < ytol)):
-                    # heading for some known special point
-                    if pole_type == 'start':
-                        # is the fieldline about to be closed?
-                        if ((dpole * abs(sv) < ytol) and
-                            (dpole * abs(cv) < xtol) and (l > 1e-3)):
-                            # path is closed
-                            nodes[-1]['v_out'] = None
-                            print 'closed at', pretty_vec(p)
-                            break
-                        elif (h > 0.99 * dpole and (cv > 0.9 or
-                            (cv > 0. and dpole * abs(sv) < ytol))):
-                            # slow down
-                            h = max(4.*err, dpole*cv * max(.9, 1-.1*dpole*cv))
- 
-                    if (pole_type == 'monopoles' and
-                        dpole < 0.01 and cv > .996):
-                        # approaching a monopole: end line with x**3 curve
-                        nodes[-1]['v_out'] = vnorm(v) * dpole
-                        v = vnorm(1.5 * vnorm(vpole) - .5 * vnorm(nodes[-1]['v_out']))
-                        nodes.append({'p':nearest_pole[:2].copy(), 'v_in':v * dpole, 'v_out':None})
-                        l += h
-                        break
- 
-                    if (pole_type == 'dipoles' and
-                        dpole < 0.01 and cv > .996):
-                        # approaching a dipole
-                        m = sign * vnorm(nearest_pole[2:4])
-                        p = nodes[-1]['p'] + 2. * sc.dot(m, vpole) * m * dpole
-                        # approximation by a y=x**1.5 curve
-                        nodes[-1]['v_out'] = 2. * vnorm(v) * dpole
-                        nodes.append({'p':nearest_pole[:2].copy(), 'v_in':sc.zeros(2), 'v_out':sc.zeros(2)})
-                        l += h
-                        # check if the path is being closed
-                        v_end = self.first_point - p
-                        if ((dpole * abs(sinv(v, v_end)) < ytol) and
-                            (dpole * abs(cosv(v, v_end)) < xtol) and l > 1e-3):
-                            # path is closed
-                            nodes[-1]['v_out'] = None
-                            break
-                        if pass_dipoles == 0:
-                            nodes[-1]['v_out'] = None
-                            break
-                        if pass_dipoles > 0:
-                            pass_dipoles -= 1
-                        v = f(p)
-                        nodes.append({'p':p.copy(), 'v_in':2.*vnorm(v)*dpole})
-                        l += h
-                        continue
- 
-                # buckle detection at unknown places
-                elif h < 0.01:
-                    # check change rate of curvature
-                    hh = h * 3.
-                    v0 = f(p + hh / 2. * v)
-                    v1 = f(p + hh * v)
-                    angle0 = atan2(v[1], v[0])
-                    angle1 = atan2(v0[1], v0[0])
-                    angle2 = atan2(v1[1], v1[0])
-                    a0 = angle_dif(angle1, angle0)
-                    a1 = angle_dif(angle2, angle1)
-                    adif = angle_dif(a1, a0)
-                    corner_limit = 1e4
-                    if abs(adif) / hh**2 > corner_limit:
-                        # assume a corner here
-                        if abs(a0) >= abs(a1):
-                            h0 = 0.; h1 = hh / 2.
-                            vm = vnorm(vnorm(v) + vnorm(v0))
-                        else:
-                            h0 = hh / 2.; h1 = hh
-                            vm = vnorm(vnorm(v0) + vnorm(v1))
-                        if vabs(vm)==0.: vm = vnorm(sc.array([v0[1], -v0[0]]))
-                        hc = op.brentq(lambda hc: sinv(f(p+hc*v), vm), h0, h1)
-                        v2 = f(p + hc / 2. * v)
-                        if sinv(f(p), vm) * sinv(f(p + 2.*hc*v2), vm) <= 0.:
-                            hc = op.brentq(lambda hc: sinv(f(p + hc * v2),
-                                vm), 0., 2. * hc)
-                        nodes[-1]['v_out'] = vnorm(nodes[-1]['v_in']) * hc
-                        # create a corner
-                        # use second-order formulas instead of runge-kutta
-                        p += hc * v2
-                        print 'corner at', pretty_vec(p)
-                        v = vnorm(2. * v2 - v)
-                        nodes.append({'p':p.copy(),'v_in':v*hc,'corner':True})
-                        l += h
-                        # check if the path is being closed
-                        v_end = self.first_point - p
-                        if ((dpole * abs(sinv(v, v_end)) < ytol) and
-                            (dpole * abs(cosv(v, v_end)) < xtol) and l > 1e-3):
-                            # path is closed
-                            nodes[-1]['v_out'] = None
-                            break
-                        # check area after the corner
-                        # lengths are chosen to ensure corner detection
-                        p0 = p + hh * .2 * f(p + hh * .2 * v1); va0 = f(p0)
-                        p1 = p0 + hh * .4 * va0; va1 = f(p1)
-                        p2 = p1 + hh * .4 * va1; va2 = f(p2)
-                        angle0 = atan2(va0[1], va0[0])
-                        angle1 = atan2(va1[1], va1[0])
-                        angle2 = atan2(va2[1], va2[0])
-                        a0 = angle_dif(angle1, angle0)
-                        a1 = angle_dif(angle2, angle1)
-                        adif = angle_dif(a1, a0)
-                        if (abs(adif) / (.8*hh)**2 > corner_limit or
-                            abs(a0) + abs(a1) >= pi / 2.):
-                            print 'end edge at', pretty_vec(p)
-                            # direction after corner changes again -> end line
-                            nodes[-1]['v_out'] = None
-                            break
-                        vm = vnorm(1.25 * va1 - 0.25 * va2)
-                        v = f(p + hh * vm)
-                        nodes[-1]['v_out'] = vnorm(2. * vm - v) * hh
-                        p += vm * hh
-                        nodes.append({'p':p.copy(), 'v_in':v * hh})
-                        l += h
- 
-            # make single and double runge-kutta step
-            p11 = self.__rkstep(p, vnorm(v), f, h)
-            p21 = self.__rkstep(p, vnorm(v), f, h / 2.)
-            p22 = self.__rkstep(p21, f(p21), f, h / 2.)
-            diff = vabs(p22 - p11)
-            if diff < 2. * err:
-                # accept step
-                p = (16. * p22 - p11) / 15.
-                nodes[-1]['v_out'] = vnorm(v) * h
-                v = f(p)
-                if vabs(v) == 0.:
-                    # field is zero, line is stuck -> end line
-                    nodes[-1]['v_out'] = None
-                    break
-                if (len(nodes) >= 2
-                    and vabs(nodes[-1]['p'] - nodes[-2]['p']) == 0.):
-                    if h > 2. * err: h /= 7.
-                    else:
-                        # point doesn_t move, line is stuck -> end line
-                        nodes = nodes[:-1]
-                        nodes[-1]['v_out'] = None
-                        break
-                nodes.append({'p':p.copy(), 'v_in':v * h})
-                l += h
- 
-            # stop at the prohibited area
-            if not self.stop_funcs is None and self.stop_funcs != [None, None]:
-                stop_fct = self.stop_funcs[{-1.0:0, 1.0:1}[sign]]
-                if stop_fct(nodes[-1]['p']) > 0.0:
-                    while len(nodes) > 1 and stop_fct(nodes[-2]['p']) > 0.0:
-                        nodes = nodes[:-1]
-                    if len(nodes) > 1:
-                        p, p1 = nodes[-2]['p'], nodes[-1]['p']
-                        t = op.brentq(lambda t: stop_fct(p + t * (p1 - p)),
-                            0.0, 1.0)
-                        nodes[-1]['p'] = p + t * (p1 - p)
-                        h = vabs(nodes[-1]['p'] - p)
-                        nodes[-2]['v_out'] = f(nodes[-2]['p']) * h
-                        nodes[-1]['v_in'] = f(nodes[-1]['p']) * h
-                    print 'stopped at', pretty_vec(nodes[-1]['p'])
-                    break 
- 
-            # adapt step carefully
-            if diff > 0.:
-                factor = (err / diff) ** .25
-                if h < h_old: h_new = min((h + h_old) / 2., h * factor)
-                else: h_new = h * max(0.5, factor)
-                h_old = h
-                h = h_new
-            else:
-                h_old = h
-                h *= 2.
-            h = min(hmax, max(err, h))
- 
-        nodes[-1]['v_out'] = None
-        if i == maxn:
-            print maxn, 'integration steps exceeded at', pretty_vec(p)
-        if l >= maxr:
-            print 'integration boundary',str(maxr),'exceeded at',pretty_vec(p)
-        return nodes
- 
-    def __is_loop(self, nodes, path_close_tol):
-        if vabs(nodes[0]['p'] - nodes[-1]['p']) >  max(5e-4, path_close_tol):
-            return False
-        length = 0.
-        for i in range(1, len(nodes)):
-            length += vabs(nodes[i]['p'] - nodes[i-1]['p'])
-            if length > 5e-3:
-                return True
-        return False
- 
-    def __create_nodes(self, directions, maxn, maxr, hmax, pass_dipoles, path_close_tol):
-        '''
-        creates self.nodes from one or two parts
-        wrapper for __self.create_nodes_part
-        '''
-        closed = False
-        if (directions == 'forward'):
-            self.nodes = self.__create_nodes_part( 1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
-        else:
-            nodes1 = self.__create_nodes_part( -1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
-            # reverse nodes1
-            nodes1.reverse()
-            for node in nodes1:
-                v_out = node['v_out']
-                if node['v_in'] == None: node['v_out'] = None
-                else: node['v_out'] = -node['v_in']
-                if v_out == None: node['v_in'] = None
-                else: node['v_in'] = -v_out
-            self.nodes = nodes1
-            if len(self.nodes) > 0: self.first_point = self.nodes[0]['p']
-            if directions != 'backward':
-                # is it already a closed loop?
-                if not self.__is_loop(self.nodes, path_close_tol):
-                    nodes2 = self.__create_nodes_part( 1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
-                    self.nodes[-1]['v_out'] = nodes2[0]['v_out']
-                    self.nodes += nodes2[1:]
- 
-        # append accumulated normalized sum
-        self.nodes[0]['t'] = 0.
-        for i in range(1, len(self.nodes)):
-            self.nodes[i]['t'] = (self.nodes[i-1]['t']
-                + vabs(self.nodes[i-1]['p'] - self.nodes[i]['p']))
-        length = self.nodes[-1]['t']
-        if length != 0.:
-            for i in range(1, len(self.nodes)):
-                self.nodes[i]['t'] /= length
-        # add corner tag to all nodes
-        for i, node in enumerate(self.nodes):
-            if not node.has_key('corner'):
-                self.nodes[i]['corner'] = False
- 
-    def get_position(self, t):
-        '''
-        dense output routine
-        t: parameter, 0 <= t <= 1
-        '''
-        nodes = self.nodes
-        if len(nodes) == 1:
-            return nodes[0]['p']
-        if len(nodes) <= 0:
-            return sc.zeros(2)
-        if t != 1.: t = t % 1.
-        n, p = list_interpolate([i['t'] for i in nodes], t)
-        p0, v0 = nodes[n]['p'], nodes[n]['v_out']
-        p1, v1 = nodes[n+1]['p'], nodes[n+1]['v_in']
-        # cubic bezier interpolation (hermite interpolation)
-        q = 1. - p
-        xy = q*p0 + p*p1 + p * q * ((p - q) * (p1 - p0) + (q*v0 - p*v1))
-        return xy
- 
-    def __bending(self, p0, p3, t0, t3):
-        # calculate two extra points on intervall
-        p1 = self.get_position((2.*t0 + t3) / 3.)
-        p2 = self.get_position((t0 + 2.*t3) / 3.)
-        # d1, d2: point distances from straight line
-        d1 = (p1 - p0)[0] * (p3 - p0)[1] - (p1 - p0)[1] * (p3 - p0)[0]
-        d1 /= vabs(p3 - p0)
-        d2 = (p2 - p0)[0] * (p3 - p0)[1] - (p2 - p0)[1] * (p3 - p0)[0]
-        d2 /= vabs(p3 - p0)
-        dsum, ddif = d1 + d2, d1 - d2
-        d = 0.
-        if abs(ddif) < 1e-5:
-            d = 10. / 9. * (abs(d1) + abs(d2)) / 2.
-        else:
-            # calculate line bending as max distance of a deg-3 polynomial:
-            y = lambda x: 13.5 * x * (1.-x) * (d1 * (2./3.-x) + d2 * (x-1./3.))
-            # all the factors come from the quadratic formula
-            xm = .5 + dsum / (18. * ddif)
-            xd = sqrt(27. * ddif**2 + dsum**2) / (18. * ddif)
-            x1, x2 = min(xm + xd, xm - xd), max(xm + xd, xm - xd)
-            if x1 > 0.:
-                d = max(d, abs(y(x1)))
-            if x2 < 1.:
-                d = max(d, abs(y(x2)))
-        return d
- 
-    def __get_polyline(self, t0, t1, digits=3.5, maxdist=10., mindist=4e-4):
-        '''
-        returns points of an adapted polyline,
-        representing the fieldline to an accuracy of digits.
-        no corner should be between t0 and t1.
-        '''
-        f = self.get_position
-        t_list = sc.linspace(t0, t1, 10)
-        value_list = [f(t) for t in t_list]
- 
-        # adapt t_list
-        num = 0; num_success = 0
-        while len(t_list) > 2:
-            ratios = []; delta_t = []
-            N_old = len(t_list) - 1
-            success = True
-            # get bending
-            for i in range(N_old):
-                bend = self.__bending(value_list[i], value_list[i+1],
-                    t_list[i], t_list[i + 1])
-                d = vabs(value_list[i+1] - value_list[i])
-                # keep point distance smaller than maxdist
-                ratio = d / maxdist
-                if num > 10: exponent = 1. / (num - 8.)
-                else: exponent = 0.5
-                # find best ratio, assuming bending is proportional to d**2
-                if bend != 0.:
-                    ratio = max(ratio, (bend / 0.1 ** digits)**exponent)
-                ratio = min(ratio, d / mindist)
-                if ratio > 1.1: # 1 + 0.1 for termination safety
-                    success = False
-                ratio = min(max(.25, ratio), 4.) # prevent too big changes
-                ratios.append(ratio)
-                delta_t.append(t_list[i + 1] - t_list[i])
- 
-            n = sum(ratios)
-            N = max(1, ceil(n)) # new intervall number must be an integer
-            num += 1
-            # check if we all intervalls are good enough and we are finished
-            if success == True: num_success += 1
-            else: num_success = 0
-            if num_success > 2 and N < N_old: num_success = 2
-            if num_success >= 3: break
-            if num >= 25:
-                print 'polyline creation did not converge after', num, 'tries!'
-                break
-            ratios = [ratio * N / n for ratio in ratios]
- 
-            # rearrange t_list
-            t_list = [t0] # initialize again
-            N0 = 0; Nt = 0.; N1 = 0.; t = t0
-            for i in range(N_old):
-                N1 += ratios[i]
-                while N1 - N0 >= 1.:
-                    N0 += 1
-                    t += delta_t[i] * (N0 - Nt) / ratios[i]
-                    Nt = N0
-                    if len(t_list) == N:
-                        break
-                    t_list.append(t)
-                t += delta_t[i] * (N1 - Nt) / ratios[i]
-                Nt = N1
-            t_list.append(t1)
-            value_list = [f(t) for t in t_list]
-        return value_list, t_list
- 
-    def __out_of_bounds(self, p, bounds):
-        '''
-        returns a points distance to the drawing area
-        >0: outside;    <=0: inside
-        '''
-        if not self.bounds_func is None:
-            s = self.bounds_func(p)
-            if s > 0.: return s
-        if bounds == None: return -1.
-        if (p[0] < bounds['x0'] or p[1] < bounds['y0']
-            or p[0] > bounds['x1'] or p[1] > bounds['y1']):
-            return sqrt((p[0] - bounds['x0'])**2 + (p[1] - bounds['y0'])**2
-                + (bounds['x1'] - p[0])**2 + (bounds['y1'] - p[1])**2)
-        else:
-            return max(bounds['x0'] - p[0], bounds['y0'] - p[1],
-                p[0] - bounds['x1'], p[1] - bounds['y1'])
- 
-
-
-
-
-
-            
-    def get_polylines(self, digits=3.5, maxdist=10., bounds=None):
-        '''
-        returns polyline segments that are inside of bounds.
-        the path is represented as a set of adapted line segments
-        which are cut at the image bounds and at edges.
-        '''
-        if len(self.nodes) <= 1: return []
- 
-        # search for all corners
-        corners = []
-        for node in self.nodes:
-            if node['corner']: corners.append(node['t'])
-        if len(corners) == 0 or corners[0] != 0.: corners.insert(0, 0.)
-        if corners[-1] != 1.: corners.append(1.)
- 
-        # search for points where line intersects bounds
-        edges = []; parts_outside = False; inside1 = False; t1 = 0.
-        if self.__out_of_bounds(self.nodes[0]['p'], bounds) <= 0.:
-            inside1 = True
-            edges.append({'t0':0.})
-        for i in range(1, len(self.nodes)):
-            t0 = t1; t1 = self.nodes[i]['t']
-            p1 = self.nodes[i]['p']
-            inside0 = inside1
-            inside1 = (self.__out_of_bounds(p1, bounds) <= 0.)
-            if inside1:
-                if not inside0:
-                    edges.append({'t0':op.brentq(lambda t: 
-                        self.__out_of_bounds(self.get_position(t),
-                        bounds), t0, t1)})
-                if i == len(self.nodes) - 1:
-                    edges[-1]['t1'] = 1.
-            else:
-                parts_outside = True
-                if inside0:
-                    edges[-1]['t1'] = (op.brentq(lambda t:
-                        self.__out_of_bounds(self.get_position(t),
-                        bounds), t0, t1))
- 
-        # all points are outside the drawing area
-        if len(edges) == 0: return []
- 
-        # join first and last segment
-        if (len(edges) > 1 and
-            edges[0]['t0'] == 0. and edges[-1]['t1'] == 1. and
-            vabs(self.get_position(1.) - self.get_position(0.)) <= 1e-5):
-            edges[0]['t0'] = edges[-1]['t0'] - 1.
-            edges = edges[:-1]
- 
-        # insert corners to all segments
-        for edge in edges:
-            edge['corners'] = []
-            for c in corners:
-                if edge['t0'] < c and c < edge['t1']:
-                    edge['corners'].append(c)
- 
-        # create final polylines
-        polyline = []
-        for interval in edges:
-            line = []
-            t_list = [interval['t0']] + interval['corners'] + [interval['t1']]
-            for i in range(1, len(t_list)):
-                pl = self.__get_polyline(t_list[i-1], t_list[i], digits, maxdist)[0]
-                if i == 1: line += pl
-                else: line += pl[1:]
-            if len(line) >= 2:
-                polyline.append({'path':line, 'start':(interval['t0']==0.), 'end':(interval['t1']==1.)})
-        return polyline
- 
 
 
 
@@ -1243,271 +530,217 @@ class FieldVectors:
       return d_near
 
 
+
+class FieldLine:
+  '''calculates field lines.'''
+
+  def __init__(self, sources, p_start):
+
+    self.sources = sources
+    self.p0 = sc.array(p_start)
+
+  def get_line(self, bounds=None, ds=1e-1, maxn=1000, ftype='E',backward=False):
+    '''Get a set of points that lie on a field line passing through the point p.'''
+
+    line = { 'closed' : False, 'nodes' : [] }
+    nodes = line['nodes']
+
+    # f is the function that returns the tangent vector for the line at all points in space
+    if ftype == 'E':
+      if backward:
+        f = lambda s, p: vnorm(self.sources.E(p))
+      else:
+        f = lambda s, p: -vnorm(self.sources.E(p))
+    elif ftype == 'B':
+      if backward:
+        f = lambda s, p: vnorm(self.sources.B(p))
+      else:
+        f = lambda s, p: -vnorm(self.sources.B(p))
+    else:
+      raise BaseException("ERROR: Unknown ftype "+ftype)
+
+    p = self.p0
+    s = 0
+
+    integrator = ig.ode( f )
+    integrator.set_integrator('vode',method='bdf')
+    integrator.set_initial_value(p,s)
+
+    n = 0
+    out = False
+    while n <= maxn and in_bounds(bounds,p) and not line['closed'] and integrator.successful():
+      s += ds
+      plast = p
+      p = integrator.integrate(s)
+      nodes.append( {'p' : p } )
+      n += 1
+      if vabs(p-plast) < .9*ds:
+        break
+      if vabs(p - self.p0) > ds:
+        out = True
+      if out and vabs(p - self.p0) < ds:
+        line['closed'] = True
+
+    if not line['closed'] and n < maxn:
+      # we probably ran out of bounds
+      # try to go backwards
+      p = self.p0
+      integrator.set_initial_value(p,s)
+      p_last = nodes[-1]['p']
+      while n <= maxn and in_bounds(bounds,p) and not line['closed'] and integrator.successful():
+        s -= ds
+        plast = p
+        p = integrator.integrate(s)
+        nodes.insert(0, {'p' : p } )
+        n += 1
+        if vabs(p-plast) < .9*ds:
+          break
+        if out and vabs(p - p_last) < ds:
+          line['closed'] = True
+
+
+    return line
+
+
 class EquipotentialLine:
   '''calculates equipotential lines.'''
 
-  def __init__(self, field):
+  def __init__(self, sources, p_start):
 
-    self.field = field
+    self.sources = sources
+    self.p0 = sc.array(p_start)
 
-  def get_nodes(self, boundary, p_start, ds=1e-3, maxn=1000):
+  def get_line(self, bounds=None, ds=1e-2, maxn=1000):
     '''Get a set of points that lie on an equipotential line passing through the point p.'''
 
-    nodes = []
+    line = { 'closed' : False, 'nodes' : [] }
+    nodes = line['nodes']
 
-    err = 5e-8
-    h = ds
+    # equipotential lines are perpindicular to field lines (and therefore the field vectors)
+    # so the "direction field" for equipotential lines is just the vector field rotated by 90 degrees.
+
+    # f is the function that returns the tangent vector for the line at all points in space
+    f = lambda s, p: rot( (vnorm(self.sources.E(p))), pi/2 )
+    p = self.p0
+    s = 0
+
+    integrator = ig.ode( f )
+    integrator.set_integrator('lsoda')
+    integrator.set_initial_value(p,s)
+
+    n = 0
+    out = False
+    while n <= maxn and in_bounds(bounds,p) and not line['closed']:
+      s += ds
+      p = integrator.integrate(s)
+      nodes.append( {'p' : p } )
+      n += 1
+      if vabs(p - self.p0) > ds:
+        out = True
+      print out,p,self.p0,vabs(p-self.p0)
+      if out and vabs(p - self.p0) < ds:
+        line['closed'] = True
+
+    if not line['closed'] and n < maxn:
+      # we probably ran out of bounds
+      # try to go backwards
+      p = self.p0
+      integrator.set_initial_value(p,s)
+      p_last = nodes[-1]['p']
+      while n <= maxn and in_bounds(bounds,p) and not line['closed']:
+        s -= ds
+        p = integrator.integrate(s)
+        nodes.insert(0, {'p' : p } )
+        n += 1
+        if vabs(p - p_last) < ds:
+          line['closed'] = True
+
+
+    return line
+
+
     
-    # F points in the direction of 'steepest assent'.
-    # we want to travel perpindicular to this direction, so we need to rotate 90 degrees.
-    f = lambda p: rot( field.F(r), pi/2 )
-    p = p_start
-    v = f(p)
-    for i in range(maxn):
-      n = 0
-      diff = 4*err
-
-      while diff > 2*err:
-
-        # take a runge-kutta step
-        p11 = rkstep(p, v, f, h)
-        # now take two
-        p21 = rkstep(p,        v, f, h / 2.)
-        p22 = rkstep(p21, f(p21), f, h / 2.)
-        diff = vabs(p22 - p11)
-        if diff < 2. * err:
-          p = (16. * p22 - p11) / 15.
-          v = f(p)
-
-      self.nodes.append( {'p' : sc.array(p) } )
 
 
-    
+
+
+class Source(object):
+  def E(self,r):
+    '''Returns the electric field due to the source at a given point.'''
+    return sc.array([0,0])
+  def B(self,r):
+    '''Returns the magnetic field due to the source at a given point.'''
+    return sc.array([0,0])
+  def V(self,r):
+    '''Returns the electric potential (with respect to ground at infinity) due to the source at a given point.'''
+    return 0
+
+
+class PointCharge(Source):
+  def __init__(self, r, q=1 ):
+    self.r = sc.array(r)
+    self.q = q
+
+  def E(self,r):
+    Exy = sc.zeros(2)
+    r = sc.array(r)
+    dr = r - self.r
+    d = vabs(dr)
+    if d != 0.:
+      Exy += self.q * dr / d**3
+
+    return Exy
+
+  def pos(self):
+    return self.r
+
+  
+class SourceCollection:
+  def __init__(self):
+    self.sources = []
+
+    self.pole_sources = ( PointCharge)
+
+  def add_source(self,s):
+    self.sources.append(s)
+
+  def get_nearest_pole(self,r):
+    ns = None
+    nd = None
+    for s in self.sources:
+      if isinstance( s, self.pole_sources ):
+        d = vabs(s.pos() - r)
+        if nd is None:
+          nd = 2*d
+
+        if d < nd:
+          ns = s
+          nd = d
+
+    return ns
+
+  def E(self,r):
+    Exy = sc.zeros(2)
+    for s in self.sources:
+      Exy += s.E(r)
+    return Exy
+
+  def B(self,r):
+    Bxy = sc.zeros(2)
+    for s in self.sources:
+      Bxy += s.B(r)
+    return Bxy
+
+  def V(self,r):
+    Vxy = 0
+    for s in self.sources:
+      Vxy += s.V(r)
+    return Vxy
+
+
+
+
+
 
 
  
-class Field:
-    '''
-    represents an electromagnetic field together with
-    charges, potential, setup etc.
-    '''
-    def __init__ (self, elements={}):
-        self.elements = {}
-        for name, params in elements.iteritems():
-            self.add_element(name, params)
- 
-    '''
-    possible types:
-    'homogeneous': [Fx, Fy]
-    'monopoles': [x, y, charge]
-    'dipoles': [x, y, phi, q]
-    'quadrupoles': [x, y, phi, q]
-    'wires': [x, y, I]
-    'charged_planes': [x0, y0, x1, y1, charge]
-    'ringcurrents': [x0, y0, phi, R, I]
-    'coils': [x0, y0, phi, R, Lhalf, I]
-    'custom': user defined function
-    '''
- 
-    def add_element(self, name, params):
-        if len(params) >= 1 and str(type(params[0])) == "<type 'function'>":
-            if name in self.elements: self.elements[name] += params
-            else: self.elements[name] = params
-        else:
-            el = [sc.array(param, dtype='float') for param in params]
-            if name in self.elements: self.elements[name] += el
-            else: self.elements[name] = el
- 
-    def get_elements(self, name):
-        if name in self.elements: return self.elements[name]
-        else: return []
- 
-    def F(self, xy):
-        '''
-        returns the field vector
-        '''
-        Fxy = sc.zeros(2)
- 
-        # homogeneous: homogeneus field in a given direction
-        for hom in self.get_elements('homogeneous'):
-            Fxy += hom
- 
-        # monopoles: electric charges and magnetic monopoles
-        for mon in self.get_elements('monopoles'):
-            r = xy - sc.array(mon[:2])
-            d = vabs(r)
-            if d != 0.:
-                Fxy += mon[-1] * r / d**3
- 
-        # dipoles: pointlike electric or magnetic dipole
-        for dip in self.get_elements('dipoles'):
-            r = xy - sc.array(dip[:2])
-            d = vabs(r)
-            if d != 0.:
-                p = sc.array(dip[2:4])
-                Fxy += (3. * sc.dot(p, r) * r - sc.dot(r, r) * p) / (4.*pi*d**5)
-            else:
-                # the sign of this is unphysical, but more useful
-                return dip[2:4]
- 
-        # quadrupoles: pointlike electric or magnetic quadrupoles
-        for quad in self.get_elements('quadrupoles'):
-            r = xy - sc.array(quad[:2])
-            d = vabs(r)
-            r /= d
-            if d != 0.:
-                p = rot([0,1], quad[2])
-                pr = sc.dot(p, r)
-                Fxy += (((5.*pr**2 - 1.) * r - 2.*pr * p) *
-                    3.*quad[3] / (4.*pi * d**4))
-            else:
-                return quad[2:4]
- 
-        # wires: infinite straight wire perpendicular to image plane
-        for wire in self.get_elements('wires'):
-            r = xy - sc.array(wire[:2])
-            Fxy += wire[-1]/(2*pi) * sc.array([-r[1], r[0]]) / (r[0]**2 + r[1]**2)
- 
-        # charged_planes: rectangular plane with edges [x0,y0] and [x1,y1]
-        # perpendicular to image plane and infinite in z-direction
-        for plane in self.get_elements('charged_planes'):
-            r = xy - .5 * (plane[2:4] + plane[0:2])
-            p = .5 * (plane[2:4] - plane[0:2])
-            rsq = r[0]**2 + r[1]**2
-            psq = p[0]**2 + p[1]**2
-            X = r[0] * p[1] - p[0] * r[1]
-            Y = r[1] * p[1] + p[0] * r[0]
-            if X == 0.: Fa = 0.
-            else: Fa = atan((psq - Y) / X) + atan((psq + Y) / X) 
-            Fb = atanh(2. * Y / (rsq + psq))
-            Fxy += (plane[4] / (4*pi*psq)
-                * sc.array([Fa*p[1]+Fb*p[0], Fb*p[1]-Fa*p[0]]))
- 
-        # ringcurrents: round currentloop perpendicular to image plane
-        # caution: slow because of numerical integration
-        for ring in self.get_elements('ringcurrents'):
-            r = xy - sc.array(ring[:2])
-            # change into a relative coordinate system with a and b
-            a, b = rot(r, -ring[2]) / ring[3]
-            c = 1. + a**2 + b**2
-            def fa(t): h=cos(t); return (1.-b*h) / sqrt((c-2.*b*h)**3)
-            def fb(t): h=cos(t); return (a * h) / sqrt((c-2.*b*h)**3)
-            Fa = ig.quad(fa, 0., pi, epsrel=0., full_output=True)[0]
-            Fb = ig.quad(fb, 0., pi, epsrel=0., full_output=True)[0]
-            # backtransform
-            Fxy += rot([Fa, Fb], ring[2]) * (ring[-1] / ring[3])
- 
-        # coil: dense cylinder coil or cylinder magnet
-        # caution: slow because of numerical integration
-        for coil in self.get_elements('coils'):
-            r = xy - sc.array(coil[:2])
-            # change into a relative coordinate system with a and b
-            a, b = rot(r, -coil[2]) / coil[3]
-            c = 1. + b**2
-            l = coil[4] / coil[3]
-            am = a - l; am2 = am ** 2
-            ap = a + l; ap2 = ap ** 2
-            def fa(t):
-                h = cos(t);
-                d = c - 2. * b * h
-                return (1. - b*h) / d * (ap / sqrt(d + ap2)
-                    - am / sqrt(d + am2))
-            def fb(t):
-                h = cos(t);
-                d = c - 2. * b * h
-                return h / sqrt(d + am2) - h / sqrt(d + ap2)
-            Fa = ig.quad(fa, 0., pi, full_output=True)[0]
-            Fb = ig.quad(fb, 0., pi, full_output=True)[0]
-            # backtransform
-            Fxy += rot([Fa, Fb], coil[2]) * (coil[-1] / (2. * coil[4]))
- 
-        # custom: user defined function
-        for cust in self.get_elements('custom'):
-            Fxy += cust(xy)
- 
-        return Fxy
- 
-    def V(self, xy):
-        '''
-        returns the field potential
-        '''
-        V = 0
- 
-        # monopoles: electric charges
-        for mon in self.get_elements('monopoles'):
-            r = xy - sc.array(mon[:2])
-            d = vabs(r)
-            if d != 0.:
-                V += mon[-1] / d
- 
-        return V
-
-
-if __name__ == "__main__":
-  import sys
-  import yaml
-  configs = []
-  for fn in sys.argv[1:]:
-    with open(fn,'r') as f:
-      for c in yaml.load_all(f.read()):
-        configs.append(c)
-
-  def get( d, key, default = None ):
-    keys = key.split('.')
-    tmp = d
-    missing = False
-    for k in keys:
-      if tmp is not None and k in tmp:
-        tmp = tmp[k]
-      else:
-        missing= True
-        break
-
-    if missing:
-      return default
-    else:
-      return tmp
-
-
-
-
-  for config in configs:
-    doc = FieldplotDocument( **config['document'] )
-    field = Field( **config['field'] )
-
-    for k in get( config, 'options.document.draw', {} ):
-      if k == 'charges':
-        getattr(doc, 'draw_'+k)(field,**get(config, 'options.document.draw.'+k))
-
-    for lconfig in get( config, 'fieldlines', [] ):
-      fline = FieldLine( field, **lconfig )
-      doc.draw_line( fline, **get(config, 'options.document.draw.line', {} ) )
-
-    for bundle in get( config, 'fieldline_bundles', [] ):
-      if bundle['type'] == 'from_point':
-        bconfig = { 'start_p' : []
-                  , 'theta_min' : 0
-                  , 'theta_max' : 360
-                  , 'N' : 10
-                  }
-        for k in bconfig:
-          if k in bundle:
-            bconfig[k] = bundle[k]
-
-        dtheta = (bconfig['theta_max'] - bconfig['theta_min']) / (bconfig['N'] )
-        for i in range(bconfig['N']):
-          lconfig = bundle.copy()
-          # remove bundle config entries
-
-          del lconfig['type']
-          for k in bconfig:
-            if k in lconfig:
-              del lconfig[k]
-
-          lconfig['start_p'] = bconfig['start_p']
-          theta = (pi/180.)*(bconfig['theta_min'] + i*dtheta)
-          lconfig['start_v'] = [cos( theta ) , sin( theta )]
-          fline = FieldLine( field, **lconfig )
-          doc.draw_line( fline, **get(config, 'options.document.draw.line', {} ) )
-
-    doc.write()
