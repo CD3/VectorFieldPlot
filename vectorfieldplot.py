@@ -26,8 +26,8 @@ import sys
 from math import *
 import bisect
 
-from lxml import etree
 import svgwrite
+from svg.path import Path, Line, Arc, CubicBezier, QuadraticBezier
 import scipy as sc
 import scipy.optimize as op
 import scipy.integrate as ig
@@ -101,7 +101,6 @@ def list_interpolate(l, t):
 def pretty_vec(p):
     return '{0:> 9.5f},{1:> 9.5f}'.format(p[0], p[1])
  
-
 def get_elem_by_id(parent,key):
 
   keys = key.split('.')
@@ -116,6 +115,33 @@ def get_elem_by_id(parent,key):
 
   return None
 
+def grad( f, p ):
+  '''Compute the gradient of a function.'''
+
+  dx = 1e-5
+  dy = 1e-5
+
+  f0 = f(p)
+  p[0] += dx
+  fx = (f(p) - f0) / dx
+  p[0] -= dx
+  p[1] += dy
+  fy = (f(p) - f0) / dy
+  p[1] -= dy
+
+  return sc.array([fx,fy])
+
+def rkstep(self, p, v, f, h):
+    '''
+    fourth order Runge Kutta step
+    '''
+    k1 = h * v
+    k2 = h * f(p + k1 / 2.)
+    k3 = h * f(p + k2 / 2.)
+    k4 = h * f(p + k3)
+    p1 = p + (k1 + 2. * (k2 + k3) + k4) / 6.
+    return p1
+ 
  
 
 
@@ -164,6 +190,7 @@ class FieldplotDocument:
 
         # add containers (groups for different elements)
         self.img.add(dwg.g(id='fieldlines'))
+        self.img.add(dwg.g(id='equipotentiallines'))
         # make sure sources are on top
         self.img.add(dwg.g(id='sources'))
 
@@ -302,14 +329,6 @@ class FieldplotDocument:
                 arrows.append(arrow)
 
         return arrows
- 
-
-
-
-
-
-
-
 
  
     def draw_charges(self, field, scale=1.):
@@ -338,6 +357,86 @@ class FieldplotDocument:
           g.translate(charge[0], charge[1])
           g.scale(float(scale)/self.unit)
           container.add( g )
+
+    def draw_fieldline(self, fieldline, maxdist=10., linewidth=2., linecolor='black', attributes=[], arrows_style=None):
+        '''
+        draws a calculated fieldline from a FieldLine object
+        to the FieldplotDocument svg image
+        '''
+ 
+        bounds = {}
+        bounds['x0'] = -(self.center[0] + 0.5 * linewidth) / self.unit
+        bounds['y0'] = -(self.height - self.center[1] +
+            0.5 * linewidth) / self.unit
+        bounds['x1'] = (self.width - self.center[0] +
+            0.5 * linewidth) / self.unit
+        bounds['y1'] = (self.center[1] + 0.5 * linewidth) / self.unit
+ 
+        # fetch the polyline from the fieldline object
+        polylines = fieldline.get_polylines(self.digits, maxdist, bounds)
+        if len(polylines) == 0:
+          return
+ 
+        dwg = self.dwg
+        img = self.img
+
+        if get_elem_by_id( self.dwg.defs,'arrows.'+linecolor ) is None:
+          self.__add_arrow(linecolor)
+
+        container = get_elem_by_id(self.img,'fieldlines')
+
+        # path object that will be the field line
+        path = dwg.path(stroke=linecolor, stroke_width=linewidth/self.unit, fill='none')
+        for k,v in attributes:
+          p[k] = v
+
+        #### line drawing ####
+        path_data = []
+        for polyline in polylines:
+          line_points = polyline['path']
+          for i, p in enumerate(line_points):
+            # go through all points, draw them if line segment is visible
+            ptext = '{1:.{0}f},{2:.{0}f}'.format( int(ceil(self.digits)), p[0], p[1])
+            if i == 0: path_data.append('M ' + ptext)
+            else: path_data.append('L ' + ptext)
+        # close path if possible
+        if (vabs(polylines[0]['path'][0] - polylines[-1]['path'][-1]) < .1**self.digits):
+          closed = True
+          if len(polylines) == 1:
+            path_data.append('Z')
+          elif len(polylines) > 1:
+            # rearrange array cyclic
+            path_data.pop(0)
+            while path_data[0][0] != 'M':
+              path_data.append(path_data.pop(0))
+        else: closed = False
+ 
+        path.push(' '.join(path_data))
+
+        g = dwg.g(id='fieldline{0}'.format(len(container.elements)))
+        g.add(path)
+
+        if not arrows_style is None:
+          arrows = self.__get_arrows_on_polylines( polylines, arrows_style, linewidth, linecolor, closed )
+          for a in arrows:
+            g.add(a)
+
+        container.add(g)
+
+
+    def draw_line(self, line, linewidth=2, linecolor='black'):
+      nodes = line.get_nodes()
+      path = Path()
+      start = end = complex(*nodes[0]['p'])
+      for i in range(1,len(nodes)):
+        end = complex(*nodes[i]['p'])
+        path.append( Line( start,end ) )
+        start = end
+
+      container = get_elem_by_id(self.img,'equipotentiallines')
+      line = self.dwg.path( path.d(), stroke=linecolor,stroke_width=linewidth/self.unit,fill='none' )
+      container.add( line )
+
 
     # NEEDS PORTED
     def draw_currents(self, field, scale=1.):
@@ -441,75 +540,6 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
                     text.set(attr, str(val))
                     text.text = SN[i]
  
-    def draw_fieldline(self, fieldline, maxdist=10., linewidth=2., linecolor='black', attributes=[], arrows_style=None):
-        '''
-        draws a calculated fieldline from a FieldLine object
-        to the FieldplotDocument svg image
-        '''
- 
-        bounds = {}
-        bounds['x0'] = -(self.center[0] + 0.5 * linewidth) / self.unit
-        bounds['y0'] = -(self.height - self.center[1] +
-            0.5 * linewidth) / self.unit
-        bounds['x1'] = (self.width - self.center[0] +
-            0.5 * linewidth) / self.unit
-        bounds['y1'] = (self.center[1] + 0.5 * linewidth) / self.unit
- 
-        # fetch the polyline from the fieldline object
-        polylines = fieldline.get_polylines(self.digits, maxdist, bounds)
-        if len(polylines) == 0:
-          return
- 
-        dwg = self.dwg
-        img = self.img
-
-        if get_elem_by_id( self.dwg.defs,'arrows.'+linecolor ) is None:
-          self.__add_arrow(linecolor)
-
-        container = get_elem_by_id(self.img,'fieldlines')
-
-        # path object that will be the field line
-        path = dwg.path(stroke=linecolor, stroke_width=linewidth/self.unit, fill='none')
-        for k,v in attributes:
-          p[k] = v
-
-        #### line drawing ####
-        path_data = []
-        for polyline in polylines:
-          line_points = polyline['path']
-          for i, p in enumerate(line_points):
-            # go through all points, draw them if line segment is visible
-            ptext = '{1:.{0}f},{2:.{0}f}'.format( int(ceil(self.digits)), p[0], p[1])
-            if i == 0: path_data.append('M ' + ptext)
-            else: path_data.append('L ' + ptext)
-        # close path if possible
-        if (vabs(polylines[0]['path'][0] - polylines[-1]['path'][-1]) < .1**self.digits):
-          closed = True
-          if len(polylines) == 1:
-            path_data.append('Z')
-          elif len(polylines) > 1:
-            # rearrange array cyclic
-            path_data.pop(0)
-            while path_data[0][0] != 'M':
-              path_data.append(path_data.pop(0))
-        else: closed = False
- 
-        path.push(' '.join(path_data))
-
-        g = dwg.g(id='fieldline{0}'.format(len(container.elements)))
-        g.add(path)
-
-        if not arrows_style is None:
-          arrows = self.__get_arrows_on_polylines( polylines, arrows_style, linewidth, linecolor, closed )
-          for a in arrows:
-            g.add(a)
-
-        container.add(g)
-
-    # legacy method name
-    draw_line = draw_fieldline
-
-
     # NEEDS PORTED
     def draw_vectors(self, vectors, linewidth=2.,
         linecolor='#000000', attributes=[], arrows_style=None):
@@ -574,8 +604,6 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
 
 
 
-
- 
 class FieldLine:
     '''
     calculates field lines
@@ -651,8 +679,8 @@ class FieldLine:
         # l is always the summarized length
         err = 5e-8 # error tolerance for integration
         f = None
-        if sign >= 0.: f = self.field.Fn
-        else: f = lambda r: -self.field.Fn(r)
+        if sign >= 0.: f = lambda r:  vnorm( self.field.F(r) )
+        else:          f = lambda r: -vnorm( self.field.F(r) )
         # first point
         p = self.p_start
         if not self.v_start is None:
@@ -681,8 +709,7 @@ class FieldLine:
                 vpole /= dpole
  
                 cv = cosv(v, vpole); sv = sinv(v, vpole)
-                if ((dpole < 0.1 or h >= dpole)
-                    and (cv > 0.9 or dpole < ytol)):
+                if ((dpole < 0.1 or h >= dpole) and (cv > 0.9 or dpole < ytol)):
                     # heading for some known special point
                     if pole_type == 'start':
                         # is the fieldline about to be closed?
@@ -701,10 +728,8 @@ class FieldLine:
                         dpole < 0.01 and cv > .996):
                         # approaching a monopole: end line with x**3 curve
                         nodes[-1]['v_out'] = vnorm(v) * dpole
-                        v = vnorm(1.5 * vnorm(vpole) -
-                            .5 * vnorm(nodes[-1]['v_out']))
-                        nodes.append({'p':nearest_pole[:2].copy(),
-                            'v_in':v * dpole, 'v_out':None})
+                        v = vnorm(1.5 * vnorm(vpole) - .5 * vnorm(nodes[-1]['v_out']))
+                        nodes.append({'p':nearest_pole[:2].copy(), 'v_in':v * dpole, 'v_out':None})
                         l += h
                         break
  
@@ -715,8 +740,7 @@ class FieldLine:
                         p = nodes[-1]['p'] + 2. * sc.dot(m, vpole) * m * dpole
                         # approximation by a y=x**1.5 curve
                         nodes[-1]['v_out'] = 2. * vnorm(v) * dpole
-                        nodes.append({'p':nearest_pole[:2].copy(),
-                            'v_in':sc.zeros(2), 'v_out':sc.zeros(2)})
+                        nodes.append({'p':nearest_pole[:2].copy(), 'v_in':sc.zeros(2), 'v_out':sc.zeros(2)})
                         l += h
                         # check if the path is being closed
                         v_end = self.first_point - p
@@ -872,19 +896,16 @@ class FieldLine:
                 return True
         return False
  
-    def __create_nodes(self, directions,
-        maxn, maxr, hmax, pass_dipoles, path_close_tol):
+    def __create_nodes(self, directions, maxn, maxr, hmax, pass_dipoles, path_close_tol):
         '''
         creates self.nodes from one or two parts
         wrapper for __self.create_nodes_part
         '''
         closed = False
         if (directions == 'forward'):
-            self.nodes = self.__create_nodes_part(
-                1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
+            self.nodes = self.__create_nodes_part( 1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
         else:
-            nodes1 = self.__create_nodes_part(
-                -1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
+            nodes1 = self.__create_nodes_part( -1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
             # reverse nodes1
             nodes1.reverse()
             for node in nodes1:
@@ -898,8 +919,7 @@ class FieldLine:
             if directions != 'backward':
                 # is it already a closed loop?
                 if not self.__is_loop(self.nodes, path_close_tol):
-                    nodes2 = self.__create_nodes_part(
-                        1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
+                    nodes2 = self.__create_nodes_part( 1., maxn, maxr, hmax, pass_dipoles, path_close_tol)
                     self.nodes[-1]['v_out'] = nodes2[0]['v_out']
                     self.nodes += nodes2[1:]
  
@@ -1045,6 +1065,12 @@ class FieldLine:
             return max(bounds['x0'] - p[0], bounds['y0'] - p[1],
                 p[0] - bounds['x1'], p[1] - bounds['y1'])
  
+
+
+
+
+
+            
     def get_polylines(self, digits=3.5, maxdist=10., bounds=None):
         '''
         returns polyline segments that are inside of bounds.
@@ -1107,15 +1133,16 @@ class FieldLine:
             line = []
             t_list = [interval['t0']] + interval['corners'] + [interval['t1']]
             for i in range(1, len(t_list)):
-                pl = self.__get_polyline(t_list[i-1], t_list[i],
-                    digits, maxdist)[0]
+                pl = self.__get_polyline(t_list[i-1], t_list[i], digits, maxdist)[0]
                 if i == 1: line += pl
                 else: line += pl[1:]
             if len(line) >= 2:
-                polyline.append({'path':line,
-                    'start':(interval['t0']==0.), 'end':(interval['t1']==1.)})
+                polyline.append({'path':line, 'start':(interval['t0']==0.), 'end':(interval['t1']==1.)})
         return polyline
  
+
+
+
 class FieldVectors:
   '''
   calculates field vectors
@@ -1215,6 +1242,49 @@ class FieldVectors:
 
       return d_near
 
+
+class EquipotentialLine:
+  '''calculates equipotential lines.'''
+
+  def __init__(self, field):
+
+    self.field = field
+
+  def get_nodes(self, boundary, p_start, ds=1e-3, maxn=1000):
+    '''Get a set of points that lie on an equipotential line passing through the point p.'''
+
+    nodes = []
+
+    err = 5e-8
+    h = ds
+    
+    # F points in the direction of 'steepest assent'.
+    # we want to travel perpindicular to this direction, so we need to rotate 90 degrees.
+    f = lambda p: rot( field.F(r), pi/2 )
+    p = p_start
+    v = f(p)
+    for i in range(maxn):
+      n = 0
+      diff = 4*err
+
+      while diff > 2*err:
+
+        # take a runge-kutta step
+        p11 = rkstep(p, v, f, h)
+        # now take two
+        p21 = rkstep(p,        v, f, h / 2.)
+        p22 = rkstep(p21, f(p21), f, h / 2.)
+        diff = vabs(p22 - p11)
+        if diff < 2. * err:
+          p = (16. * p22 - p11) / 15.
+          v = f(p)
+
+      self.nodes.append( {'p' : sc.array(p) } )
+
+
+    
+
+
  
 class Field:
     '''
@@ -1254,7 +1324,7 @@ class Field:
  
     def F(self, xy):
         '''
-        returns the field force as a vector
+        returns the field vector
         '''
         Fxy = sc.zeros(2)
  
@@ -1357,14 +1427,20 @@ class Field:
  
         return Fxy
  
-    def Fn(self, xy):
+    def V(self, xy):
         '''
-        returns the normalized field force, i.e. direction of field lines
+        returns the field potential
         '''
-        force = self.F(xy)
-        d = vabs(force)
-        if (d != 0.): return force / d
-        return sc.array([0., 0.])
+        V = 0
+ 
+        # monopoles: electric charges
+        for mon in self.get_elements('monopoles'):
+            r = xy - sc.array(mon[:2])
+            d = vabs(r)
+            if d != 0.:
+                V += mon[-1] / d
+ 
+        return V
 
 
 if __name__ == "__main__":
