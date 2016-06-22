@@ -25,12 +25,10 @@ along with this program; if not, see http://www.gnu.org/licenses/
 import sys
 from math import *
 from cmath import phase
-import bisect
 
 import svgwrite
-from svg.path import Path, Line, Arc, CubicBezier, QuadraticBezier, parse_path
+from svg.path import Path, Line, parse_path
 import scipy as sc
-import scipy.optimize as op
 import scipy.integrate as ig
  
  
@@ -162,9 +160,8 @@ class FieldplotDocument:
 
 
 
-
-
     def __add_arrow(self,color):
+      '''Add an arrow for the given color to the document defs.'''
       id = color+'_arrow'
       if get_elem_by_id( self.dwg.defs, 'arrows.'+id ) is None:
         arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
@@ -175,15 +172,17 @@ class FieldplotDocument:
         get_elem_by_id( self.dwg.defs, 'arrows' ).add(arrow)
 
     def __get_bounds(self):
-        bounds = {}
-        bounds['x0'] = -self.center[0] / self.unit
-        bounds['y0'] = -(self.height - self.center[1]) / self.unit
-        bounds['x1'] = (self.width - self.center[0]) / self.unit
-        bounds['y1'] =  self.center[1] / self.unit
+      '''Get the bounds for the image.'''
+      bounds = {}
+      bounds['x0'] = -self.center[0] / self.unit
+      bounds['y0'] = -(self.height - self.center[1]) / self.unit
+      bounds['x1'] = (self.width - self.center[0]) / self.unit
+      bounds['y1'] =  self.center[1] / self.unit
 
-        return bounds
+      return bounds
 
     def __make_pointcharge_drawing(self, source, id, scale):
+      '''Create an SVG element for a point charge.'''
       dwg = self.dwg
 
       g = dwg.g(id=id)
@@ -204,6 +203,7 @@ class FieldplotDocument:
       return g
 
     def draw_sources(self, sources, scale=1., stypes='All'):
+      '''Draw the sources on the image.'''
       dwg = self.dwg
       img = self.img
 
@@ -216,7 +216,7 @@ class FieldplotDocument:
             g = self.__make_pointcharge_drawing( source, 'charge{0}'.format(i), scale )
           container.add( g )
 
-    def __make_line(self,line,linewidth,linecolor):
+    def __make_line_drawing(self,line,linewidth,linecolor):
       bounds = self.__get_bounds()
       line = line.get_line(bounds)
       nodes = line['nodes']
@@ -237,8 +237,9 @@ class FieldplotDocument:
       return line
 
     def draw_fieldline(self, line, linewidth=2, linecolor='black', arrowstyle = {'num':1} ):
+      '''Draw a field line on the drawing.'''
       container = get_elem_by_id(self.img,'fieldlines')
-      line = self.__make_line( line, linewidth, linecolor )
+      line = self.__make_line_drawing( line, linewidth, linecolor )
       group = self.dwg.g( id='fieldline{0}'.format( len(container.elements) ) )
 
       # now draw arrows (if needed)
@@ -277,13 +278,15 @@ class FieldplotDocument:
 
 
     def draw_equipotentialline(self, line, linewidth=2, linecolor='red'):
+      '''Draw a equipotential line on the drawing.'''
       container = get_elem_by_id(self.img,'equipotentiallines')
-      line = self.__make_line( line, linewidth, linecolor )
+      line = self.__make_line_drawing( line, linewidth, linecolor )
       group = self.dwg.g( id='equipotentialline{0}'.format( len(container.elements) ) )
       group.add(line)
       container.add(group)
 
     def write(self, filename=None):
+      '''Write the image.'''
       self.dwg.save()
       print 'image written to', self.dwg.filename
 
@@ -293,7 +296,7 @@ class FieldplotDocument:
 
 
 class FieldLine:
-  '''calculates field lines.'''
+  '''Class that calculates field lines.'''
 
   def __init__(self, sources, p_start):
 
@@ -357,7 +360,7 @@ class FieldLine:
     return line
 
 class EquipotentialLine:
-  '''calculates equipotential lines.'''
+  '''Class that calculates equipotential lines.'''
 
   def __init__(self, sources, p_start):
 
@@ -420,6 +423,7 @@ class LineCollection:
 
 
 class Source(object):
+  '''Class represnting a field source.'''
   def E(self,r):
     '''Returns the electric field due to the source at a given point.'''
     return sc.array([0,0])
@@ -431,6 +435,7 @@ class Source(object):
     return 0
 
 class PointCharge(Source):
+  '''A point charge source.'''
   def __init__(self, r, q=1 ):
     self.r = sc.array(r)
     self.q = q
@@ -449,6 +454,7 @@ class PointCharge(Source):
     return self.r
 
 class SourceCollection:
+  '''A collection of field sources.'''
   def __init__(self):
     self.sources = []
 
