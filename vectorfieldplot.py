@@ -24,10 +24,11 @@ along with this program; if not, see http://www.gnu.org/licenses/
  
 import sys
 from math import *
+from cmath import phase
 import bisect
 
 import svgwrite
-from svg.path import Path, Line, Arc, CubicBezier, QuadraticBezier
+from svg.path import Path, Line, Arc, CubicBezier, QuadraticBezier, parse_path
 import scipy as sc
 import scipy.optimize as op
 import scipy.integrate as ig
@@ -77,32 +78,7 @@ def sinv(v1, v2):
     if d1 * d2 == 0.: return 0.
     return (v1[0] * v2[1] - v1[1] * v2[0]) / (d1 * d2)
  
-def angle_dif(a1, a2):
-    return ((a2 - a1 + pi) % (2. * pi)) - pi
- 
-def list_interpolate(l, t):
-    n = max(0, bisect.bisect_right(l, t) - 1)
-    s = None
-    if t < l[0]:
-        if l[1] - l[0] == 0.:
-            s = 0.
-        else:
-            s = (t - l[0]) / float(l[1] - l[0])
-    elif t >= l[-1]:
-        n = len(l) - 2
-        if l[-1] - l[-2] == 0.:
-            s = 1.
-        else:
-            s = (t - l[-2]) / float(l[-1] - l[-2])
-    else:
-        s = (t - l[n]) / (l[n+1] - l[n])
-    return n, s
- 
-def pretty_vec(p):
-    return '{0:> 9.5f},{1:> 9.5f}'.format(p[0], p[1])
- 
 def get_elem_by_id(parent,key):
-
   keys = key.split('.')
   key = keys[0]
 
@@ -114,22 +90,6 @@ def get_elem_by_id(parent,key):
         return e
 
   return None
-
-def grad( f, p ):
-  '''Compute the gradient of a function.'''
-
-  dx = 1e-5
-  dy = 1e-5
-
-  f0 = f(p)
-  p[0] += dx
-  fx = (f(p) - f0) / dx
-  p[0] -= dx
-  p[1] += dy
-  fy = (f(p) - f0) / dy
-  p[1] -= dy
-
-  return sc.array([fx,fy])
 
 def in_bounds(bounds,p):
   '''Check if a point is within a given bounding box.'''
@@ -153,7 +113,6 @@ class FieldplotDocument:
         self.name = name
         self.width = float(width)
         self.height = float(height)
-        self.digits = float(digits)
         self.unit = float(unit)
         self.license = license
         if center == None: self.center = [width / 2., height / 2.]
@@ -202,133 +161,20 @@ class FieldplotDocument:
         dwg.set_desc( title=name, desc=desc ) 
 
 
-        # misc info
-        self.arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
-
-
 
 
 
     def __add_arrow(self,color):
-      arrow = self.dwg.path(id=color+'_arrow', stroke='none', fill=color)
-      arrow.push( 'M {0},0 L {1},{3} L {2},0 L {1},-{3} L {0},0 Z'.format(
-          self.arrow_geo['x_nock'], self.arrow_geo['x_tail'],
-          self.arrow_geo['x_head'], self.arrow_geo['width'] / 2.))
-      arrow.scale(1./self.unit)
+      id = color+'_arrow'
+      if get_elem_by_id( self.dwg.defs, 'arrows.'+id ) is None:
+        arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
+        arrow = self.dwg.path(id=id, stroke='none', fill=color)
+        arrow.push( 'M {0},0 L {1},{3} L {2},0 L {1},-{3} L {0},0 Z'.format(
+            arrow_geo['x_nock'], arrow_geo['x_tail'],
+            arrow_geo['x_head'], arrow_geo['width'] / 2.))
+        arrow.scale(1./self.unit)
 
-      get_elem_by_id( self.dwg.defs, 'arrows' ).add(arrow)
-
-    def __get_arrows_on_polylines(self, polylines, arrows_style, linewidth, linecolor='#000000', closed=False):
-        '''
-        draws arrows on polylines.
-        options in "arrows_style":
-        min_arrows: minimum number of arrows per segment
-        max_arrows: maximum number of arrows per segment (None: no limit)
-        dist: optimum distance between arrows
-        scale: relative size of arrows to linewidth
-        offsets [start_offset, mid_end, mid_start, end_offset]
-        fixed_ends [True, False, False, True]:
-        	make first/last arrow distance invariable
-        '''
-        min_arrows = 1; max_arrows = None; arrows_dist = 1.; scale = linewidth
-        offsets = 4 * [0.5]; fixed_ends = 4 * [False]
-        if 'min_arrows' in arrows_style:
-            min_arrows = arrows_style['min_arrows']
-        if 'max_arrows' in arrows_style:
-            max_arrows = arrows_style['max_arrows']
-        if 'dist' in arrows_style:
-            arrows_dist = arrows_style['dist']
-        if 'scale' in arrows_style:
-            scale *= arrows_style['scale']
-        if 'offsets' in arrows_style:
-            offsets = arrows_style['offsets']
-        if 'fixed_ends' in arrows_style:
-            fixed_ends = arrows_style['fixed_ends']
- 
-        arrows = []
-        arrows_def = get_elem_by_id( self.dwg.defs, 'arrows' )
-        for j, polyline in enumerate(polylines):
-            line_points = polyline['path']
-            mina = min_arrows
-            maxa = max_arrows
-            # measure drawn path length
-            lines_dist = [0.]
-            for i in range(1, len(line_points)):
-                lines_dist.append(lines_dist[-1]
-                    + vabs(line_points[i] - line_points[i-1]))
- 
-            offs = [offsets[2], offsets[1]]
-            fixed = [fixed_ends[2], fixed_ends[1]]
-            if polyline['start']:
-                offs[0] = offsets[0]
-                fixed[0] = fixed_ends[0]
-            if polyline['end']:
-                offs[1] = offsets[3]
-                fixed[1] = fixed_ends[3]
- 
-            d01 = [0., lines_dist[-1]]
-            for i in [0, 1]:
-                if fixed[i]:
-                    d01[i] += offs[i] * arrows_dist * [1., -1.][i]
-                    mina -= 1
-                    if not maxa is None: maxa -= 1
-            if d01[1] - d01[0] < 0.: break
-            elif d01[1] - d01[0] == 0.: d_list = [d01[0]]
-            else:
-                d_list = []
-                if fixed[0]: d_list.append(d01[0])
-                if maxa > 0 or maxa == None:
-                    number_intervals = (d01[1] - d01[0]) / arrows_dist
-                    number_offsets = 0.
-                    for i in [0, 1]:
-                        if fixed[i]: number_offsets += .5
-                        else: number_offsets += offs[i] - .5
-                    n = int(number_intervals - number_offsets + 0.5)
-                    n = max(n, mina)
-                    if not maxa is None: n = min(n, maxa)
-                    if n > 0:
-                        d = (d01[1] - d01[0]) / float(n + number_offsets)
-                        if fixed[0]: d_start = d01[0] + d
-                        else: d_start = offs[0] * d
-                        for i in range(n):
-                            d_list.append(d_start + i * d)
-                if fixed[1]: d_list.append(d01[1])
- 
-            geo = self.arrow_geo # shortcut
-            #### arrow drawing ####
-            for d1 in d_list:
-                # calculate arrow position and direction
-                if d1 < 0. or d1 > lines_dist[-1]: continue
-                d0 = d1 + (geo['x_nock'] * scale + 2.5*linewidth *
-                    (geo['x_tail'] - geo['x_nock']) / geo['width']) / self.unit
-                if closed and d0 < 0.: d0 = lines_dist[-1] + d0
-                d2 = d1 + (geo['x_head'] * scale + linewidth *
-                    (geo['x_tail'] - geo['x_head']) / geo['width']) / self.unit
-                if closed and d2 > lines_dist[-1]: d1 -= lines_dist[-1]
-                i0, s0 = list_interpolate(lines_dist, d0)
-                i1, s1 = list_interpolate(lines_dist, d1)
-                i2, s2 = list_interpolate(lines_dist, d2)
-                p0 = line_points[i0] + s0 * (line_points[i0+1]-line_points[i0])
-                p1 = line_points[i1] + s1 * (line_points[i1+1]-line_points[i1])
-                p2 = line_points[i2] + s2 * (line_points[i2+1]-line_points[i2])
-                p = None; angle = None
-                if vabs(p2-p1) <= .1**self.digits or (d2 <= d0 and not closed):
-                    v = line_points[i1+1] - line_points[i1]
-                    p = p1
-                    angle = atan2(v[1], v[0])
-                else:
-                    v = p2 - p0
-                    p = p0 + sc.dot(p1 - p0, v) * v / vabs(v)**2
-                    angle = atan2(v[1], v[0])
- 
-                arrow = self.dwg.use( get_elem_by_id( arrows_def, linecolor+"_arrow" ) )
-                arrow.translate( p[0], p[1] )
-                arrow.rotate(degrees(angle))
-                arrow.scale(scale)
-
-                arrows.append(arrow)
-
-        return arrows
+        get_elem_by_id( self.dwg.defs, 'arrows' ).add(arrow)
 
     def __get_bounds(self):
         bounds = {}
@@ -339,8 +185,7 @@ class FieldplotDocument:
 
         return bounds
 
-
-    def __make_pointcharge(self, source, id, scale):
+    def __make_pointcharge_drawing(self, source, id, scale):
       dwg = self.dwg
 
       g = dwg.g(id=id)
@@ -360,9 +205,7 @@ class FieldplotDocument:
 
       return g
 
-
     def draw_sources(self, sources, scale=1., stypes='All'):
-
       dwg = self.dwg
       img = self.img
 
@@ -372,11 +215,10 @@ class FieldplotDocument:
         if stypes == 'All' or isinstance( source, stypes ):
           g = dwg.g(id="None")
           if isinstance( source, PointCharge ):
-            g = self.__make_pointcharge( source, 'charge{0}'.format(i), scale )
+            g = self.__make_pointcharge_drawing( source, 'charge{0}'.format(i), scale )
           container.add( g )
 
-
-    def __draw_line(self,line,linewidth,linecolor):
+    def __make_line(self,line,linewidth,linecolor):
       bounds = self.__get_bounds()
       line = line.get_line(bounds)
       nodes = line['nodes']
@@ -392,16 +234,56 @@ class FieldplotDocument:
         path.append( Line( path[-1].end, path[0].start ) )
         path.closed = True
 
-
-      container = get_elem_by_id(self.img,'equipotentiallines')
       line = self.dwg.path( path.d(), stroke=linecolor,stroke_width=linewidth/self.unit,fill='none' )
-      container.add( line )
 
-    def draw_fieldline(self, line, linewidth=2, linecolor='black'):
-      self.__draw_line( line, linewidth, linecolor )
+      return line
+
+    def draw_fieldline(self, line, linewidth=2, linecolor='black', arrowstyle = {'num':1} ):
+      container = get_elem_by_id(self.img,'fieldlines')
+      line = self.__make_line( line, linewidth, linecolor )
+      group = self.dwg.g( id='fieldline{0}'.format( len(container.elements) ) )
+
+      # now draw arrows (if needed)
+      if arrowstyle['num'] > 0:
+        self.__add_arrow(linecolor)
+        arrowscale = linewidth
+        if 'scale' in arrowstyle:
+          arrowscale *= arrowstyle['scale']
+        path = parse_path( ' '.join(line.commands) )
+        l = path.length()
+        dl = l / (arrowstyle['num'] + 1)
+        l = dl
+        s = 0
+        for segment in path:
+          if s < l and s + segment.length() >= l:
+            # put arrow at the center of the segment
+            pos = (segment.start + segment.end)/2
+            # get the displacement vector between the segments end points
+            dir = segment.end - segment.start
+            arrow = self.dwg.use( get_elem_by_id( self.dwg.defs, 'arrows.'+linecolor+'_arrow') )
+            arrow.translate( pos.real, pos.imag )
+            arrow.rotate(degrees(phase(dir)))
+            arrow.scale( arrowscale )
+
+            group.add(arrow)
+
+          s += segment.length()
+
+
+      group.add(line)
+      container.add(group)
+
+
+
+
+
 
     def draw_equipotentialline(self, line, linewidth=2, linecolor='red'):
-      self.__draw_line( line, linewidth, linecolor )
+      container = get_elem_by_id(self.img,'equipotentiallines')
+      line = self.__make_line( line, linewidth, linecolor )
+      group = self.dwg.g( id='equipotentialline{0}'.format( len(container.elements) ) )
+      group.add(line)
+      container.add(group)
 
     def write(self, filename=None):
       self.dwg.save()
@@ -409,125 +291,6 @@ class FieldplotDocument:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class FieldVectors:
-  '''
-  calculates field vectors
-  '''
-  def __init__(self, field, minscale=0, maxscale=1, unit=None, halo=None):
-    self.minscale = minscale
-    self.maxscale = maxscale
-    self.unit = unit
-    self.halo = halo
-    self.field = field
-    self.vectors = []
-    self.scaled_vectors = []
-
-  def add_vectors_in_grid(self, xmin, ymin, xmax, ymax, xN, yN):
-    xmin = 1.*xmin
-    xmax = 1.*xmax
-    dx = (xmax - xmin) / (xN - 1)
-
-    ymin = 1.*ymin
-    ymax = 1.*ymax
-    dy = (ymax - ymin) / (yN - 1)
-
-    if self.unit is None:
-      self.unit = min(dx,dy)
-
-    XYs = []
-    for x in sc.linspace( xmin, xmax, num=xN ):
-      for y in sc.linspace( ymin, ymax, num=yN ):
-        XYs.append( (x,y) )
-
-    self.__add_vectors(XYs)
-    self.__create_scaled_vectors( )
-
-  def add_vectors_on_line(self, line, ds):
-    '''Adds vectors'''
-
-  def __add_vectors(self, XYs):
-    for x,y in XYs:
-      f = self.field.F([x,y])
-      self.vectors.append( (x,y,f) )
-
-  def __create_scaled_vectors(self, trans = None ):
-    if trans is None:
-      trans = self.__log_scale
-    def inhalo(p):
-      if self.halo is None:
-        return False
-
-      pd  = self.__get_distance_to_nearest_pole( sc.array(p) )
-      halo = self.halo
-      if self.halo == 'auto':
-        halo = self.maxscale*self.unit
-
-      return  pd and pd < halo
-
-    self.scaled_vectors = []
-    minlen = maxlen = None
-    for i in range(len(self.vectors)):
-      x,y,f = self.vectors[i]
-      if inhalo([x,y]):
-        continue
-
-      if minlen is None or vabs(f) < minlen:
-        minlen = vabs(f)
-      if maxlen is None or vabs(f) > maxlen:
-        maxlen = vabs(f)
-
-    self.scaled_vectors = []
-    for i in range(len(self.vectors)):
-      x,y,f = self.vectors[i]
-      if inhalo([x,y]):
-        continue
-      self.scaled_vectors.append( (x,y,trans( f, self.minscale*self.unit, self.maxscale*self.unit, minlen, maxlen )) )
-
-  def __log_scale(self, f, newmin, newmax, oldmin, oldmax):
-    oldlen = vabs(f)
-    ratio = log10( oldlen / oldmin ) / log10( oldmax / oldmin )
-    newlen = newmin + (newmax - newmin) * ratio
-
-    fx = newlen * f[0] / oldlen
-    fy = newlen * f[1] / oldlen
-
-    return [fx,fy]
-
-  def __get_distance_to_nearest_pole(self, p, v=None):
-      '''
-      returns distance to nearest pole
-      '''
-      d_near = None
-      for ptype, poles in self.field.elements.iteritems():
-          if ptype not in ['monopoles', 'dipoles'] or len(poles) == 0:
-              continue
-          for pole in poles:
-              d = vabs(pole[:2] - p)
-              if d_near is None or d < d_near:
-                d_near = d
-
-      return d_near
 
 
 
@@ -539,7 +302,7 @@ class FieldLine:
     self.sources = sources
     self.p0 = sc.array(p_start)
 
-  def get_line(self, bounds=None, ds=1e-1, maxn=1000, ftype='E',backward=False):
+  def get_line(self, bounds=None, ds=1e-1, maxn=1000, ftype='E'):
     '''Get a set of points that lie on a field line passing through the point p.'''
 
     line = { 'closed' : False, 'nodes' : [] }
@@ -547,15 +310,9 @@ class FieldLine:
 
     # f is the function that returns the tangent vector for the line at all points in space
     if ftype == 'E':
-      if backward:
-        f = lambda s, p: vnorm(self.sources.E(p))
-      else:
-        f = lambda s, p: -vnorm(self.sources.E(p))
+      f = lambda s, p: vnorm(self.sources.E(p))
     elif ftype == 'B':
-      if backward:
-        f = lambda s, p: vnorm(self.sources.B(p))
-      else:
-        f = lambda s, p: -vnorm(self.sources.B(p))
+      f = lambda s, p: vnorm(self.sources.B(p))
     else:
       raise BaseException("ERROR: Unknown ftype "+ftype)
 
@@ -601,7 +358,6 @@ class FieldLine:
 
     return line
 
-
 class EquipotentialLine:
   '''calculates equipotential lines.'''
 
@@ -637,7 +393,6 @@ class EquipotentialLine:
       n += 1
       if vabs(p - self.p0) > ds:
         out = True
-      print out,p,self.p0,vabs(p-self.p0)
       if out and vabs(p - self.p0) < ds:
         line['closed'] = True
 
@@ -658,6 +413,8 @@ class EquipotentialLine:
 
     return line
 
+class LineCollection:
+  pass
 
     
 
@@ -674,7 +431,6 @@ class Source(object):
   def V(self,r):
     '''Returns the electric potential (with respect to ground at infinity) due to the source at a given point.'''
     return 0
-
 
 class PointCharge(Source):
   def __init__(self, r, q=1 ):
@@ -694,7 +450,6 @@ class PointCharge(Source):
   def pos(self):
     return self.r
 
-  
 class SourceCollection:
   def __init__(self):
     self.sources = []
