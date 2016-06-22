@@ -1,4 +1,4 @@
-import math
+import math, cmath
 import numpy
 import vectorfieldplot as vfp
 
@@ -15,6 +15,7 @@ def test_dipole():
   for i in range(N):
       # compute the angle that the line will start off at
       angle = i * 2.*math.pi / (N-1)
+      p = 
       line = vfp.FieldLine( sources, [0+1e-1*math.cos(angle),1+1e-1*math.sin(angle) ] )
       doc.draw_fieldline(line)
 

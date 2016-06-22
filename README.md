@@ -1,92 +1,57 @@
-VectorFieldPlot
-===============
+# VectorFieldPlot
 
 A python module for creating svg images of electric and magnetic field lines for user defined charge and current configurations.
 
-This module is an adaptation of the code written by Geek3 to create high quality, physically correct images of electric and magnetic field lines.
+This module started out as an adaptation of the
+[code written by Geek3](http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot),
+to create high quality, physically correct images of electric and magnetic field lines.
+It has since been significantly rewritten, and is not as complete as the original version yet.
 
-[http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot](http://commons.wikimedia.org/wiki/User:Geek3/VectorFieldPlot)
+**Rewrite**
+I started the rewrite when I wanted to add support for drawing equipotential lines on the images. I spent several days trying to figure
+out how the code worked and started modifying small pieces until eventually I decided to do a rewrite so that I could learn about svg images
+and how to calculate field lines.
 
-The version posted by Geek3 was a single python script that generated the field lines. It contained a set of classes and utility functions for creating the lines,
-and then a short program at the end that used these classes to create an image for a specific charge configuration. The images created by the script are fantastic, it does a great job.
+## Examples
 
-This project just organized the classes that do the work into their own module so that is can be used by multiple programs at once.
-This initial commit is a straight copy of version 1.3 posted by Geek3.
+An image of a field is constructed in parts using several classes:
 
-Here is an exmple program that uses the module to generate a picture of the fields lines for an electric dipole
-consisting of a postive and negative charge on the x-axis.
+  - The `FieldplotDocument` class represents the svg file. To build an image you draw items on the document,
+    and then write it.
 
-    #!  /usr/bin/env python
+  - The `Source` class is used to represent sources of the field. This is a baseclass that will not be used directly,
+    but all field source classes inherit from it. The following sources are currently implemented:
 
-    '''An example script that generates a picture of the field lines for an electric dipole.'''
+      - `PointCharge` represents a single electric point charge.
 
-    import math
-    import vectorfieldplot as vfp
+  - The 'SourceCollection` class is used to build a collection of sources into a system.
 
+  - The `FieldLine` class is used to compute a field line for a collection of point sources.
 
-    # create a document. we specify the file name and image size here
-    doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
-
-    # create a field opbject
-    field = vfp.Field()
-    # add the point charges
-    field.add_element('monopoles' , [ [ 1,0, 1]  # the positive charge
-                                    , [-1,0,-1]  # the negative charge
-                                    ] )
-
-    # draw the charges for the field on the document
-    doc.draw_charges(field)
-
-    # start drawing the field lines
-    # we are going to draw 20 field lines comming off of the positive charge at uniformly spaced angles.
-    N = 20
-    for i in range(N):
-        # compute the angle that the line will start off at
-        angle = i * 2.*math.pi / (N-1)
-        # generate the line
-        # this takes the initial position, the x and y components of the initial direction, and whether or not should go forward
-        # or backward.
-        line = vfp.FieldLine( field, [1,0], start_v=[math.cos( angle ) , math.sin( angle )],directions='forward' )
-        # draw the lin on the document
-        doc.draw_line(line,arrows_style={'min_arrows':1,'max_arrows':1})
-
-    # write the document
-    doc.write()
+  - The `EquipotentialLine` class is used to compute an equipotential line for a collection of point sources.
 
 
-This example will draw the field for a dipole directly using the dipole element
-    #!  /usr/bin/env python
+This example draws the electric field lines for an electric dipole.
 
-    '''An example script that generates a picture of the field lines for an electric dipole.'''
+```
+sources = vfp.SourceCollection()
+sources.add_source( vfp.PointCharge( [0, 1], 1 ) )
+sources.add_source( vfp.PointCharge( [0,-1],-1 ) )
 
-    import math
-    import vectorfieldplot as vfp
+doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
+doc.draw_sources(sources)
 
+N = 20
+for i in range(N):
+  # compute the angle that the line will start off at
+  angle = i * 2.*math.pi / (N-1)
+  p = [1,0]
+  p[0] = 1e-1*math.cos(angle)
+  p[1] = 1e-1*math.sin(angle)
+  line = vfp.FieldLine( field, p)
+  doc.draw_fieldline(line,arrows_style={'min_arrows':1,'max_arrows':1})
 
-    # create a document. we specify the file name and image size here
-    doc = vfp.FieldplotDocument( 'ElectricDipole2', width=800,height=600,unit=100)
+doc.write()
+```
 
-    # create a field opbject
-    field = vfp.Field()
-    # add the dipole
-    # note, parameters are should be [ r_x, r_y, p_x, p_y ], where r is the position vector and p is the dipole moment.
-    field.add_element('dipoles' , [ [ 0,0,1,0] ] )
-
-    # draw the charges for the field on the document
-    doc.draw_charges(field)
-
-    # start drawing the field lines
-    # we are going to draw 20 field lines comming off of the positive charge at uniformly spaced angles.
-    N = 100
-    for i in range(N):
-        # compute the angle that the line will start off at
-        angle =  -math.pi/2 + i * math.pi / (N-1)
-        # generate the line
-        # this takes the initial position, the x and y components of the initial direction, and whether or not should go forward
-        # or backward.
-        line = vfp.FieldLine( field, [0.1*math.cos(angle),0.1*math.sin(angle)], start_v=[math.cos( angle ) , math.sin( angle )],directions='forward' )
-        # draw the lin on the document
-        doc.draw_line(line,arrows_style={'min_arrows':1,'max_arrows':1})
-
-    # write the document
-    doc.write()
+More examples can be found in the [testing](testing) directory.
