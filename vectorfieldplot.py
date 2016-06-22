@@ -168,27 +168,6 @@ class FieldPlotDocument:
 
       return bounds
 
-    def _make_PointCharge_drawing(self, source, scale):
-      '''Create an SVG element for a point charge.'''
-      dwg = self.dwg
-
-      g = dwg.g()
-      c = dwg.circle(r=14, fill=('blue' if source.q < 0 else 'red') )
-      g.add( c )
-      c = dwg.circle(r=14,fill='url(#glare)',stroke='black',stroke_width=2)
-      g.add( c )
-      p = dwg.path()
-      if source.q < 0:
-        p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
-      else:
-        p.push('M 2,2 V 8 H -2 V 2 H -8 V -2')
-        p.push(' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
-      g.add(p)
-      g.translate(*source.pos())
-      g.scale(float(scale)/self.unit)
-
-      return g
-
     def draw_sources(self, sources, scale=1., stypes='All'):
       '''Draw the sources on the image.'''
       dwg = self.dwg
@@ -445,6 +424,31 @@ class PointCharge(Source):
     return self.r
 
 PoleSources.append(PointCharge)
+
+# implement method to draw point charges
+def _make_PointCharge_drawing(self, source, scale):
+  '''Create an SVG element for a point charge.'''
+  dwg = self.dwg
+
+  g = dwg.g()
+  c = dwg.circle(r=14, fill=('blue' if source.q < 0 else 'red') )
+  g.add( c )
+  c = dwg.circle(r=14,fill='url(#glare)',stroke='black',stroke_width=2)
+  g.add( c )
+  p = dwg.path()
+  if source.q < 0:
+    p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
+  else:
+    p.push('M 2,2 V 8 H -2 V 2 H -8 V -2')
+    p.push(' H -2 V -8 H 2 V -2 H 8 V 2 H 2 Z')
+  g.add(p)
+  g.translate(*source.pos())
+  g.scale(float(scale)/self.unit)
+
+  return g
+
+FieldPlotDocument._make_PointCharge_drawing = _make_PointCharge_drawing
+
 
 class SourceCollection:
   '''A collection of field sources.'''
