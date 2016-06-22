@@ -19,7 +19,7 @@ def test_dipole():
   sources.add_source( vfp.PointCharge( [0, 1], 1 ) )
   sources.add_source( vfp.PointCharge( [0,-1],-1 ) )
 
-  doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
+  doc = vfp.FieldPlotDocument( 'ElectricDipole', width=800,height=600,unit=100)
   doc.draw_sources(sources)
 
   N = 20
@@ -41,7 +41,7 @@ def test_linecharge():
   for x in X:
     sources.add_source( vfp.PointCharge( [x, 0], 1 ) )
 
-  doc = vfp.FieldplotDocument( 'LineCharge', width=800,height=600,unit=100)
+  doc = vfp.FieldPlotDocument( 'LineCharge', width=800,height=600,unit=100)
   doc.draw_sources(sources)
 
   for x in X:
@@ -58,7 +58,7 @@ def test_pointcharge_collection_generator():
   sources.add_source( vfp.PointCharge( [0, 1], q= 1 ) )
   sources.add_source( vfp.PointCharge( [0,-1], q=-1 ) )
 
-  doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
+  doc = vfp.FieldPlotDocument( 'ElectricDipole', width=800,height=600,unit=100)
   doc.draw_sources(sources)
 
   fieldlines = vfp.FieldLineCollection()

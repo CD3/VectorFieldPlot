@@ -16,7 +16,7 @@ and how to calculate field lines.
 
 An image of a field is constructed in parts using several classes:
 
-  - The `FieldplotDocument` class represents the svg file. To build an image you draw items on the document,
+  - The `FieldPlotDocument` class represents the svg file. To build an image you draw items on the document,
     and then write it.
 
   - The `Source` class is used to represent sources of the field. This is a baseclass that will not be used directly,
@@ -40,7 +40,7 @@ sources = vfp.SourceCollection()
 sources.add_source( vfp.PointCharge( [0, 1], 1 ) )
 sources.add_source( vfp.PointCharge( [0,-1],-1 ) )
 
-doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
+doc = vfp.FieldPlotDocument( 'ElectricDipole', width=800,height=600,unit=100)
 doc.draw_sources(sources)
 
 N = 10
@@ -66,7 +66,7 @@ sources = vfp.SourceCollection()
 sources.add_source( vfp.PointCharge( [0, 1], q= 1 ) )
 sources.add_source( vfp.PointCharge( [0,-1], q=-1 ) )
 
-doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
+doc = vfp.FieldPlotDocument( 'ElectricDipole', width=800,height=600,unit=100)
 doc.draw_sources(sources)
 
 fieldlines = vfp.FieldLineCollection()
@@ -77,5 +77,12 @@ doc.draw_fieldlines( fieldlines )
 doc.write()
 ```
 
-
 More examples can be found in the [testing](testing) directory.
+
+## Sources
+
+To add support for new field sources (such as an infinite line of charge) you just need to create a new class that derives the Source class and implements
+the `E` or `B` (or both) methods. The FieldLine class will use these methods with a single argument that is the coordinate to evaluate the field at,
+and that is all that is required for the library to draw the field lines. You can also
+add support for drawing the source itself by implementing a method named `_make_<ClassName>_drawing` and adding it to the FieldPlotDocument class. This method will be passed
+the source instance and a scale number. It should return an SVG element that will draw an image of the source in the correct spot.

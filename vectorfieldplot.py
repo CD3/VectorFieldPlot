@@ -90,7 +90,7 @@ def in_bounds(bounds,p):
 
 
 
-class FieldplotDocument:
+class FieldPlotDocument:
     '''
     Class representing an image.
     '''
@@ -147,7 +147,7 @@ class FieldplotDocument:
 
 
 
-    def __add_arrow(self,color):
+    def _add_arrow(self,color):
       '''Add an arrow for the given color to the document defs.'''
       id = color+'_arrow'
       if get_elem_by_id( self.dwg.defs, 'arrows.'+id ) is None:
@@ -158,7 +158,7 @@ class FieldplotDocument:
 
         get_elem_by_id( self.dwg.defs, 'arrows' ).add(arrow)
 
-    def __get_bounds(self):
+    def _get_bounds(self):
       '''Get the bounds for the image.'''
       bounds = {}
       bounds['x0'] = -self.center[0] / self.unit
@@ -168,13 +168,11 @@ class FieldplotDocument:
 
       return bounds
 
-
-
-    def __make_pointcharge_drawing(self, source, id, scale):
+    def _make_PointCharge_drawing(self, source, scale):
       '''Create an SVG element for a point charge.'''
       dwg = self.dwg
 
-      g = dwg.g(id=id)
+      g = dwg.g()
       c = dwg.circle(r=14, fill=('blue' if source.q < 0 else 'red') )
       g.add( c )
       c = dwg.circle(r=14,fill='url(#glare)',stroke='black',stroke_width=2)
@@ -201,14 +199,16 @@ class FieldplotDocument:
       for i,source in enumerate(sources.sources):
         if stypes == 'All' or isinstance( source, stypes ):
           g = dwg.g(id="None")
-          if isinstance( source, PointCharge ):
-            g = self.__make_pointcharge_drawing( source, 'charge{0}'.format(i), scale )
+          try:
+            g = getattr(self, '_make_'+source.__class__.__name__+'_drawing')( source, scale )
+          except:
+            pass
           container.add( g )
 
 
 
-    def __make_line_drawing(self,line,linewidth,linecolor):
-      bounds = self.__get_bounds()
+    def _make_line_drawing(self,line,linewidth,linecolor):
+      bounds = self._get_bounds()
       line = line.get_line(bounds,)
       nodes = line['nodes']
       if len(nodes) < 2:
@@ -230,12 +230,12 @@ class FieldplotDocument:
     def draw_fieldline(self, line, linewidth=2, linecolor='black', arrowstyle = {'num':1} ):
       '''Draw a field line on the drawing.'''
       container = get_elem_by_id(self.img,'fieldlines')
-      line = self.__make_line_drawing( line, linewidth, linecolor )
+      line = self._make_line_drawing( line, linewidth, linecolor )
       group = self.dwg.g( id='fieldline{0}'.format( len(container.elements) ) )
 
       # now draw arrows (if needed)
       if arrowstyle['num'] > 0:
-        self.__add_arrow(linecolor)
+        self._add_arrow(linecolor)
         arrowscale = linewidth
         if 'scale' in arrowstyle:
           arrowscale *= arrowstyle['scale']
@@ -270,7 +270,7 @@ class FieldplotDocument:
     def draw_equipotentialline(self, line, linewidth=2, linecolor='red'):
       '''Draw a equipotential line on the drawing.'''
       container = get_elem_by_id(self.img,'equipotentiallines')
-      line = self.__make_line_drawing( line, linewidth, linecolor )
+      line = self._make_line_drawing( line, linewidth, linecolor )
       group = self.dwg.g( id='equipotentialline{0}'.format( len(container.elements) ) )
       group.add(line)
       container.add(group)
@@ -411,6 +411,7 @@ class EquipotentialLine:
 
 
 
+PoleSources = []
 
 class Source(object):
   '''Class represnting a field source.'''
@@ -443,12 +444,12 @@ class PointCharge(Source):
   def pos(self):
     return self.r
 
+PoleSources.append(PointCharge)
+
 class SourceCollection:
   '''A collection of field sources.'''
   def __init__(self):
     self.sources = []
-
-    self.pole_sources = ( PointCharge )
 
   def add_source(self,s):
     self.sources.append(s)
@@ -457,7 +458,7 @@ class SourceCollection:
     ns = None
     nd = None
     for s in self.sources:
-      if isinstance( s, self.pole_sources ):
+      if isinstance( s, PoleSources ):
         d = vabs(s.pos() - r)
         if nd is None:
           nd = 2*d
