@@ -28,7 +28,7 @@ Todo:
 
 '''
  
-import sys
+import sys, inspect
 from math import *
 from cmath import phase
 
@@ -90,7 +90,7 @@ def in_bounds(bounds,p):
 
 
 
-class FieldPlotDocument:
+class FieldPlotDocument(object):
     '''
     Class representing an image.
     '''
@@ -178,11 +178,16 @@ class FieldPlotDocument:
       for i,source in enumerate(sources.sources):
         if stypes == 'All' or isinstance( source, stypes ):
           g = dwg.g(id="None")
-          try:
-            g = getattr(self, '_make_'+source.__class__.__name__+'_drawing')( source, scale )
-          except:
-            pass
-          container.add( g )
+          # look for a drawing method for the source or any of its base classes
+          for cls in inspect.getmro(source.__class__):
+            try:
+              mn = '_make_'+cls.__name__+'_drawing'
+              g = getattr(self, mn)( source, scale )
+              break
+            except:
+              pass
+          if not g is None:
+            container.add( g )
 
 
 
@@ -265,7 +270,7 @@ class FieldPlotDocument:
 
 
 
-class FieldLine:
+class FieldLine(object):
   '''Class that calculates field lines.'''
 
   def __init__(self, sources, p_start, backward=False):
@@ -333,7 +338,7 @@ class FieldLine:
 
     return line
 
-class EquipotentialLine:
+class EquipotentialLine(object):
   '''Class that calculates equipotential lines.'''
 
   def __init__(self, sources, p_start):
@@ -404,7 +409,7 @@ class Source(object):
     '''Returns the electric potential (with respect to ground at infinity) due to the source at a given point.'''
     return 0
 
-class PointCharge(Source):
+class MonoPole(Source):
   '''A point charge source.'''
   def __init__(self, r, q=1 ):
     self.r = sc.array(r)
@@ -423,10 +428,10 @@ class PointCharge(Source):
   def pos(self):
     return self.r
 
-PoleSources.append(PointCharge)
+PoleSources.append(MonoPole)
 
 # implement method to draw point charges
-def _make_PointCharge_drawing(self, source, scale):
+def _make_MonoPole_drawing(self, source, scale):
   '''Create an SVG element for a point charge.'''
   dwg = self.dwg
 
@@ -447,10 +452,14 @@ def _make_PointCharge_drawing(self, source, scale):
 
   return g
 
-FieldPlotDocument._make_PointCharge_drawing = _make_PointCharge_drawing
+FieldPlotDocument._make_MonoPole_drawing = _make_MonoPole_drawing
+
+class PointCharge(MonoPole):
+  pass
+FieldPlotDocument._make_PointCharge_drawing = _make_MonoPole_drawing
 
 
-class SourceCollection:
+class SourceCollection(object):
   '''A collection of field sources.'''
   def __init__(self):
     self.sources = []
