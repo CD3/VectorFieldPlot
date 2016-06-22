@@ -34,6 +34,8 @@ An image of a field is constructed in parts using several classes:
 This example draws the electric field lines for an electric dipole.
 
 ```
+import vectorfieldplot as vfp
+
 sources = vfp.SourceCollection()
 sources.add_source( vfp.PointCharge( [0, 1], 1 ) )
 sources.add_source( vfp.PointCharge( [0,-1],-1 ) )
@@ -58,19 +60,21 @@ This example does the same thing, but uses the FieldLineCollection class to auto
 that leave (or enter) each point charge.
 
 ```
-  sources = vfp.SourceCollection()
-  sources.add_source( vfp.PointCharge( [0, 1], q= 1 ) )
-  sources.add_source( vfp.PointCharge( [0,-1], q=-1 ) )
+import vectorfieldplot as vfp
 
-  doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
-  doc.draw_sources(sources)
+sources = vfp.SourceCollection()
+sources.add_source( vfp.PointCharge( [0, 1], q= 1 ) )
+sources.add_source( vfp.PointCharge( [0,-1], q=-1 ) )
 
-  fieldlines = vfp.FieldLineCollection()
-  fieldlines.add_lines_to_point_charges( sources, 10 )
+doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
+doc.draw_sources(sources)
 
-  doc.draw_fieldlines( fieldlines )
+fieldlines = vfp.FieldLineCollection()
+fieldlines.add_lines_to_point_charges( sources, 10 )
 
-  doc.write()
+doc.draw_fieldlines( fieldlines )
+
+doc.write()
 ```
 
 
