@@ -168,10 +168,8 @@ class FieldplotDocument:
       id = color+'_arrow'
       if get_elem_by_id( self.dwg.defs, 'arrows.'+id ) is None:
         arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
-        arrow = self.dwg.path(id=id, stroke='none', fill=color)
-        arrow.push( 'M {0},0 L {1},{3} L {2},0 L {1},-{3} L {0},0 Z'.format(
-            arrow_geo['x_nock'], arrow_geo['x_tail'],
-            arrow_geo['x_head'], arrow_geo['width'] / 2.))
+        path = parse_path( 'M 0.3,0 L -2.2,2.2 L 3.8,0 L -2.2,-2.2 Z' )
+        arrow = self.dwg.path(path.d(), id=id, stroke='none', fill=color)
         arrow.scale(1./self.unit)
 
         get_elem_by_id( self.dwg.defs, 'arrows' ).add(arrow)
