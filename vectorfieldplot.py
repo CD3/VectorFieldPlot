@@ -20,6 +20,11 @@ See the GNU General Public License for more details.
  
 You should have received a copy of the GNU General Public License
 along with this program; if not, see http://www.gnu.org/licenses/
+
+Todo:
+
+  Handle point source termination
+
 '''
  
 import sys
@@ -46,7 +51,7 @@ def vnorm(x):
     vector normalisation
     '''
     d = vabs(x)
-    if d != 0.: return sc.array(x) / vabs(x)
+    if d != 0.: return sc.array(x) / d
     return sc.array(x)
  
 def rot(xy, phi):
@@ -56,26 +61,7 @@ def rot(xy, phi):
     s = sin(phi); c = cos(phi)
     return sc.array([c * xy[0] - s * xy[1], c * xy[1] + s * xy[0]])
  
-def cosv(v1, v2):
-    '''
-    find the cosine of the angle between two vectors
-    '''
-    d1 = sum(v1**2); d2 = sum(v2**2)
-    if d1 != 1.: d1 = sqrt(d1)
-    if d2 != 1.: d2 = sqrt(d2)
-    if d1 * d2 == 0.: return 1.
-    return sc.dot(v1, v2) / (d1 * d2)
- 
-def sinv(v1, v2):
-    '''
-    find the sine of the angle between two vectors
-    '''
-    d1 = sum(v1**2); d2 = sum(v2**2)
-    if d1 != 1.: d1 = sqrt(d1)
-    if d2 != 1.: d2 = sqrt(d2)
-    if d1 * d2 == 0.: return 0.
-    return (v1[0] * v2[1] - v1[1] * v2[0]) / (d1 * d2)
- 
+
 def get_elem_by_id(parent,key):
   keys = key.split('.')
   key = keys[0]
@@ -107,7 +93,7 @@ class FieldplotDocument:
     '''
     Class representing an image.
     '''
-    def __init__ (self, name, width=800, height=600, digits=3.5, unit=100, center=None, license='CC-BY', author="UNKNOWN"):
+    def __init__ (self, name, width=800, height=600, unit=100, center=None, license='CC-BY', author="UNKNOWN"):
         self.name = name
         self.width = float(width)
         self.height = float(height)
@@ -181,6 +167,8 @@ class FieldplotDocument:
 
       return bounds
 
+
+
     def __make_pointcharge_drawing(self, source, id, scale):
       '''Create an SVG element for a point charge.'''
       dwg = self.dwg
@@ -216,9 +204,11 @@ class FieldplotDocument:
             g = self.__make_pointcharge_drawing( source, 'charge{0}'.format(i), scale )
           container.add( g )
 
+
+
     def __make_line_drawing(self,line,linewidth,linecolor):
       bounds = self.__get_bounds()
-      line = line.get_line(bounds)
+      line = line.get_line(bounds,)
       nodes = line['nodes']
       if len(nodes) < 2:
         nodes.append(nodes[0])
@@ -272,10 +262,9 @@ class FieldplotDocument:
       group.add(line)
       container.add(group)
 
-
-
-
-
+    def draw_fieldlines(self, lc, *args, **kwargs):
+      for l in lc.get_lines():
+        self.draw_fieldline(l,*args,**kwargs)
 
     def draw_equipotentialline(self, line, linewidth=2, linecolor='red'):
       '''Draw a equipotential line on the drawing.'''
@@ -284,6 +273,7 @@ class FieldplotDocument:
       group = self.dwg.g( id='equipotentialline{0}'.format( len(container.elements) ) )
       group.add(line)
       container.add(group)
+
 
     def write(self, filename=None):
       '''Write the image.'''
@@ -298,10 +288,11 @@ class FieldplotDocument:
 class FieldLine:
   '''Class that calculates field lines.'''
 
-  def __init__(self, sources, p_start):
+  def __init__(self, sources, p_start, backward=False):
 
     self.sources = sources
     self.p0 = sc.array(p_start)
+    self.backward = backward
 
   def get_line(self, bounds=None, ds=1e-1, maxn=1000, ftype='E'):
     '''Get a set of points that lie on a field line passing through the point p.'''
@@ -310,12 +301,13 @@ class FieldLine:
     nodes = line['nodes']
 
     # f is the function that returns the tangent vector for the line at all points in space
-    if ftype == 'E':
-      f = lambda s, p: vnorm(self.sources.E(p))
-    elif ftype == 'B':
-      f = lambda s, p: vnorm(self.sources.B(p))
-    else:
+    try:
+      field = getattr(self.sources,ftype)
+    except:
       raise BaseException("ERROR: Unknown ftype "+ftype)
+
+    dir = -1 if self.backward else 1
+    f = lambda s, p: dir*vnorm(field(p))
 
     p = self.p0
     s = 0
@@ -356,6 +348,8 @@ class FieldLine:
         if out and vabs(p - p_last) < ds:
           line['closed'] = True
 
+      if self.backward:
+        line['nodes'].reverse()
 
     return line
 
@@ -414,11 +408,6 @@ class EquipotentialLine:
 
     return line
 
-class LineCollection:
-  pass
-
-    
-
 
 
 
@@ -458,7 +447,7 @@ class SourceCollection:
   def __init__(self):
     self.sources = []
 
-    self.pole_sources = ( PointCharge)
+    self.pole_sources = ( PointCharge )
 
   def add_source(self,s):
     self.sources.append(s)
@@ -501,5 +490,36 @@ class SourceCollection:
 
 
 
+class LineCollection(object):
+  def __init__(self,*args,**kwargs):
+    self.lines = []
 
- 
+  def get_lines(self):
+    return self.lines
+
+
+
+class FieldLineCollection(LineCollection):
+  '''A collection of field lines with methods to help create them.'''
+  def __init__(self,*args,**kwargs):
+    super(FieldLineCollection,self).__init__(*args,**kwargs)
+
+
+  def add_lines_to_point_charges( self, sources, numlines, halo=1e-1, theta0 = 0 ):
+    '''Creates lines that will leave (or enter) all point sources at uniformly spaced angles.
+       For example, to make sure that at least 10 lines leaving (or enter) each point charge in
+       the drawing.
+    '''
+
+    lines = []
+    for s in sources.sources:
+      if isinstance(s, PointCharge):
+        rs = s.pos()
+        dtheta = 2*pi/numlines
+        for i in range(numlines):
+          theta = theta0 + i*dtheta
+          dr = halo*sc.array( [cos(theta), sin(theta)] )
+          lines.append( FieldLine( sources, rs + dr, s.q < 0 ) )
+
+    self.lines += lines
+
