@@ -41,7 +41,7 @@ sources.add_source( vfp.PointCharge( [0,-1],-1 ) )
 doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
 doc.draw_sources(sources)
 
-N = 20
+N = 10
 for i in range(N):
   # compute the angle that the line will start off at
   angle = i * 2.*math.pi / (N-1)
@@ -53,5 +53,25 @@ for i in range(N):
 
 doc.write()
 ```
+
+This example does the same thing, but uses the FieldLineCollection class to automatically genertae the lines
+that leave (or enter) each point charge.
+
+```
+  sources = vfp.SourceCollection()
+  sources.add_source( vfp.PointCharge( [0, 1], q= 1 ) )
+  sources.add_source( vfp.PointCharge( [0,-1], q=-1 ) )
+
+  doc = vfp.FieldplotDocument( 'ElectricDipole', width=800,height=600,unit=100)
+  doc.draw_sources(sources)
+
+  fieldlines = vfp.FieldLineCollection()
+  fieldlines.add_lines_to_point_charges( sources, 10 )
+
+  doc.draw_fieldlines( fieldlines )
+
+  doc.write()
+```
+
 
 More examples can be found in the [testing](testing) directory.

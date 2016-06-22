@@ -23,7 +23,8 @@ along with this program; if not, see http://www.gnu.org/licenses/
 
 Todo:
 
-  Handle point source termination
+  Handle point source termination (more elegantly)
+  Field line "cleaning". Need a way to make sure line spacing actually reflects field strength.
 
 '''
  
