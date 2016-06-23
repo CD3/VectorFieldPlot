@@ -23,8 +23,9 @@ along with this program; if not, see http://www.gnu.org/licenses/
 
 Todo:
 
-  Handle point source termination (more elegantly)
+  Handle source termination (more elegantly)
   Field line "cleaning". Need a way to make sure line spacing actually reflects field strength.
+  add minn to line classes
 
 '''
  
@@ -32,8 +33,9 @@ import sys, inspect
 from math import *
 from cmath import phase
 
+import dpath.util
 import svgwrite
-from svg.path import Path, Line, parse_path
+import svg.path
 import scipy as sc
 import scipy.integrate as ig
  
@@ -41,27 +43,34 @@ import scipy.integrate as ig
 version = '2.0-alpha'
  
 # some helper functions
-def vabs(x):
+def vmag(x):
     '''
     euclidian vector norm for any kind of vector
     '''
     return sqrt(sum([i**2 for i in x]))
+
+vabs = vmag
+
+def vdir(x):
+    '''
+    direction of 2D vector
+    '''
+    return atan2( x[1], x[0] )
  
 def vnorm(x):
-    '''
-    vector normalisation
-    '''
-    d = vabs(x)
-    if d != 0.: return sc.array(x) / d
-    return sc.array(x)
+  '''
+  vector normalization
+  '''
+  d = vabs(x)
+  if d != 0.: return sc.array(x) / d
+  return sc.array(x)
  
-def rot(xy, phi):
+def vrot(xy, phi):
     '''
     2D vector rotation
     '''
     s = sin(phi); c = cos(phi)
     return sc.array([c * xy[0] - s * xy[1], c * xy[1] + s * xy[0]])
- 
 
 def get_elem_by_id(parent,key):
   keys = key.split('.')
@@ -152,7 +161,7 @@ class FieldPlotDocument(object):
       id = color+'_arrow'
       if get_elem_by_id( self.dwg.defs, 'arrows.'+id ) is None:
         arrow_geo = {'x_nock':0.3,'x_head':3.8,'x_tail':-2.2,'width':4.5}
-        path = parse_path( 'M 0.3,0 L -2.2,2.2 L 3.8,0 L -2.2,-2.2 Z' )
+        path = svg.path.parse_path( 'M 0.3,0 L -2.2,2.2 L 3.8,0 L -2.2,-2.2 Z' )
         arrow = self.dwg.path(path.d(), id=id, stroke='none', fill=color)
         arrow.scale(1./self.unit)
 
@@ -168,8 +177,11 @@ class FieldPlotDocument(object):
 
       return bounds
 
-    def draw_sources(self, sources, scale=1., stypes='All'):
+    def draw_sources(self, sources, config={}):
       '''Draw the sources on the image.'''
+      scale = config.get('scale',1.)
+      stypes = config.get('stypes','All')
+
       dwg = self.dwg
       img = self.img
 
@@ -191,45 +203,63 @@ class FieldPlotDocument(object):
 
 
 
-    def _make_line_drawing(self,line,linewidth,linecolor):
-      bounds = self._get_bounds()
-      line = line.get_line(bounds,)
+    def _make_line_drawing(self, line, config={}):
+      linewidth = config.get('linewidth', 2)
+      linecolor = config.get('linecolor','black')
+
       nodes = line['nodes']
       if len(nodes) < 2:
         nodes.append(nodes[0])
-      path = Path()
+      path = svg.path.Path()
       start = end = complex(*nodes[0]['p'])
       for i in range(1,len(nodes)):
         end = complex(*nodes[i]['p'])
-        path.append( Line( start,end ) )
+        path.append( svg.path.Line( start,end ) )
         start = end
       if line['closed']:
-        path.append( Line( path[-1].end, path[0].start ) )
+        path.append( svg.path.Line( path[-1].end, path[0].start ) )
         path.closed = True
 
       line = self.dwg.path( path.d(), stroke=linecolor,stroke_width=linewidth/self.unit,fill='none' )
 
       return line
 
-    def draw_fieldline(self, line, linewidth=2, linecolor='black', arrowstyle = {'num':1} ):
+    def draw_fieldline(self, line, config={}):
       '''Draw a field line on the drawing.'''
       container = get_elem_by_id(self.img,'fieldlines')
-      line = self._make_line_drawing( line, linewidth, linecolor )
+
+      linewidth = config.get('linewidth', 2)
+      linecolor = config.get('linecolor', 'black')
+
+      line = line.get_line(self._get_bounds())
+      line = self._make_line_drawing( line, config )
       group = self.dwg.g( id='fieldline{0}'.format( len(container.elements) ) )
 
+      arrowstyle = config.get('arrowstyle', {'spacing':1})
       # now draw arrows (if needed)
-      if arrowstyle['num'] > 0:
+      if not arrowstyle is None:
         self._add_arrow(linecolor)
         arrowscale = linewidth
         if 'scale' in arrowstyle:
           arrowscale *= arrowstyle['scale']
-        path = parse_path( ' '.join(line.commands) )
-        l = path.length()
-        dl = l / (arrowstyle['num'] + 1)
-        l = dl
+
+        if not 'num' in arrowstyle:
+          arrowstyle['num'] = 1
+
+
+        path       = svg.path.parse_path( ' '.join(line.commands) )
+        pathlength = path.length()
+        if not 'spacing' in arrowstyle:
+          arrowstyle['spacing'] = pathlength / (arrowstyle['num'] + 1)
+
+        spacing = arrowstyle['spacing']
+        if spacing < pathlength/2:
+          spacing = pathlength / 2.
+
+        arrowpos = spacing
         s = 0
         for segment in path:
-          if s < l and s + segment.length() >= l:
+          if s < arrowpos and s + segment.length() >= arrowpos:
             # put arrow at the center of the segment
             pos = (segment.start + segment.end)/2
             # get the displacement vector between the segments end points
@@ -238,8 +268,9 @@ class FieldPlotDocument(object):
             arrow.translate( pos.real, pos.imag )
             arrow.rotate(degrees(phase(dir)))
             arrow.scale( arrowscale )
-
             group.add(arrow)
+
+            arrowpos += spacing
 
           s += segment.length()
 
@@ -247,17 +278,22 @@ class FieldPlotDocument(object):
       group.add(line)
       container.add(group)
 
-    def draw_fieldlines(self, lc, *args, **kwargs):
+    def draw_fieldlines(self, lc, config={}):
       for l in lc.get_lines():
-        self.draw_fieldline(l,*args,**kwargs)
+        self.draw_fieldline(l, config)
 
-    def draw_equipotentialline(self, line, linewidth=2, linecolor='red'):
+    def draw_equipotentialline(self, line, config={}):
       '''Draw a equipotential line on the drawing.'''
       container = get_elem_by_id(self.img,'equipotentiallines')
-      line = self._make_line_drawing( line, linewidth, linecolor )
+
+      config['linewidth'] = config.get('linewidth', 2)
+      config['linecolor'] = config.get('linecolor', 'red')
+      line = line.get_line(self._get_bounds())
+      line = self._make_line_drawing( line, config )
       group = self.dwg.g( id='equipotentialline{0}'.format( len(container.elements) ) )
       group.add(line)
       container.add(group)
+
 
 
     def write(self, filename=None):
@@ -267,20 +303,29 @@ class FieldPlotDocument(object):
 
 
 
+class Line(object):
+  def __init__(self,*args,**kwargs):
+    pass
 
+  def get_line(self, bounds, config={}):
+    return None
 
-
-class FieldLine(object):
+class FieldLine(Line):
   '''Class that calculates field lines.'''
 
   def __init__(self, sources, p_start, backward=False):
-
+    super(FieldLine,self).__init__()
     self.sources = sources
     self.p0 = sc.array(p_start)
     self.backward = backward
 
-  def get_line(self, bounds=None, ds=1e-1, maxn=1000, ftype='E'):
+  def get_line(self, bounds=None, config={}):
     '''Get a set of points that lie on a field line passing through the point p.'''
+
+    ftype = config.get('ftype', 'E')
+    ds    = config.get('ds',1e-1)
+    maxn  = config.get('maxn',1000)
+    minn  = config.get('minn',10)
 
     line = { 'closed' : False, 'nodes' : [] }
     nodes = line['nodes']
@@ -336,18 +381,27 @@ class FieldLine(object):
       if self.backward:
         line['nodes'].reverse()
 
+    if len(line['nodes']) < minn:
+      ds = self.ds
+      self.ds /= 2
+      line = self.get_line(bounds,ftype)
+      ds = self.ds
+
     return line
 
-class EquipotentialLine(object):
+class EquipotentialLine(Line):
   '''Class that calculates equipotential lines.'''
 
   def __init__(self, sources, p_start):
+    super(FieldLine,self).__init__()
 
     self.sources = sources
     self.p0 = sc.array(p_start)
 
-  def get_line(self, bounds=None, ds=1e-2, maxn=1000):
+  def get_line(self, bounds=None, config={}):
     '''Get a set of points that lie on an equipotential line passing through the point p.'''
+    ds   = config.get('ds',1e-1)
+    maxn = config.get('maxn',1000)
 
     line = { 'closed' : False, 'nodes' : [] }
     nodes = line['nodes']
@@ -356,7 +410,7 @@ class EquipotentialLine(object):
     # so the "direction field" for equipotential lines is just the vector field rotated by 90 degrees.
 
     # f is the function that returns the tangent vector for the line at all points in space
-    f = lambda s, p: rot( (vnorm(self.sources.E(p))), pi/2 )
+    f = lambda s, p: vrot( (vnorm(self.sources.E(p))), pi/2 )
     p = self.p0
     s = 0
 
@@ -408,8 +462,12 @@ class Source(object):
   def V(self,r):
     '''Returns the electric potential (with respect to ground at infinity) due to the source at a given point.'''
     return 0
+  def pos(self):
+    return self.r
+  def dist(self,r):
+    return float('inf')
 
-class MonoPole(Source):
+class Monopole(Source):
   '''A point charge source.'''
   def __init__(self, r, q=1 ):
     self.r = sc.array(r)
@@ -425,13 +483,10 @@ class MonoPole(Source):
 
     return Exy
 
-  def pos(self):
-    return self.r
-
-PoleSources.append(MonoPole)
+PoleSources.append(Monopole)
 
 # implement method to draw point charges
-def _make_MonoPole_drawing(self, source, scale):
+def _make_Monopole_drawing(self, source, scale):
   '''Create an SVG element for a point charge.'''
   dwg = self.dwg
 
@@ -452,11 +507,52 @@ def _make_MonoPole_drawing(self, source, scale):
 
   return g
 
-FieldPlotDocument._make_MonoPole_drawing = _make_MonoPole_drawing
+FieldPlotDocument._make_Monopole_drawing = _make_Monopole_drawing
 
-class PointCharge(MonoPole):
+class PointCharge(Monopole):
   pass
-FieldPlotDocument._make_PointCharge_drawing = _make_MonoPole_drawing
+
+class Dipole(Source):
+  '''A dipole charge source.'''
+  def __init__(self, r, p ):
+    self.r = sc.array(r,dtype=float)
+    self.p = sc.array(p,dtype=float)
+
+  def E(self,r):
+    Exy = sc.zeros(2)
+    r = sc.array(r,dtype=float)
+    dr = r - self.r
+    d = vabs(dr)
+    p = self.p
+    if d != 0.:
+      Exy += (3.*sc.dot(p,r)*r - p*d**2) / (4.*pi*d**5)
+    else:
+     return p
+
+    return Exy
+
+  B = E
+
+def _make_Dipole_drawing(self, source, scale):
+  '''Create an SVG element for a point charge.'''
+  dwg = self.dwg
+
+  g = dwg.g()
+  c = dwg.circle(r=14, fill='gray')
+  g.add( c )
+  c = dwg.circle(r=14,fill='url(#glare)',stroke='black',stroke_width=2)
+  g.add( c )
+  p = dwg.path()
+  p.push('M 8,2 H -8 V -2 H 8 V 2 Z')
+  g.add(p)
+  g.translate(*source.r)
+  g.rotate(vdir(source.p))
+  g.scale(float(scale)/self.unit)
+
+  return g
+
+FieldPlotDocument._make_Dipole_drawing = _make_Dipole_drawing
+
 
 
 class SourceCollection(object):
@@ -502,16 +598,12 @@ class SourceCollection(object):
 
 
 
-
-
-
 class LineCollection(object):
   def __init__(self,*args,**kwargs):
     self.lines = []
 
   def get_lines(self):
     return self.lines
-
 
 
 class FieldLineCollection(LineCollection):
@@ -528,7 +620,7 @@ class FieldLineCollection(LineCollection):
 
     lines = []
     for s in sources.sources:
-      if isinstance(s, PointCharge):
+      if isinstance(s, Monopole):
         rs = s.pos()
         dtheta = 2*pi/numlines
         for i in range(numlines):
@@ -538,3 +630,17 @@ class FieldLineCollection(LineCollection):
 
     self.lines += lines
 
+  def add_lines_to_dipole_charges( self, sources, numlines, halo=0.5, theta0 = 0 ):
+
+    lines = []
+    for s in sources.sources:
+      if isinstance(s, Dipole):
+        rs = s.r
+        dtheta = pi/numlines
+        pdir = vdir(s.p)
+        for i in range(numlines):
+          theta = pdir + theta0 + i*dtheta - pi/2
+          dr = vabs(s.p)*halo*sc.array( [cos(theta), sin(theta)] )
+          lines.append( FieldLine( sources, rs + dr ) )
+
+    self.lines += lines

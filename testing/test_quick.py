@@ -8,15 +8,16 @@ class MySource(vfp.PointCharge):
 def test_dipole():
 
   sources = vfp.SourceCollection()
-  sources.add_source( vfp.PointCharge( [0, 1], q= 1 ) )
-  sources.add_source( vfp.PointCharge( [0,-1], q=-1 ) )
-  sources.add_source( MySource( [1,-1], q=-2 ) )
+  # sources.add_source( vfp.Monopole( [ 1, 0], q = -1 ) )
+  # sources.add_source( vfp.Monopole( [-1, 0], q =  1 ) )
+  sources.add_source( vfp.Dipole( [0, 0], [0,1] ) )
 
   doc = vfp.FieldPlotDocument( 'ElectricDipole', width=800,height=600,unit=100)
   doc.draw_sources(sources)
 
   fieldlines = vfp.FieldLineCollection()
   fieldlines.add_lines_to_point_charges( sources, 10 )
+  fieldlines.add_lines_to_dipole_charges( sources, 10 )
 
   doc.draw_fieldlines( fieldlines )
 
