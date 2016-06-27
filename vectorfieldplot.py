@@ -193,7 +193,7 @@ class FieldPlotDocument(object):
 
 
       container = get_elem_by_id(self.img,'sources')
-      for i,source in enumerate(sources.sources):
+      for i,source in enumerate(sources.get_sources()):
         if stypes == 'All' or isinstance( source, stypes ):
           g = dwg.g(id="None")
           # look for a drawing method for the source or any of its base classes
@@ -212,6 +212,7 @@ class FieldPlotDocument(object):
     def _make_line_drawing(self, line, config={}):
       linewidth = config.get('linewidth', 2)
       linecolor = config.get('linecolor','black')
+      linedasharray = config.get('linedasharray', 10)
 
       nodes = line['nodes']
       if len(nodes) < 2:
@@ -226,7 +227,7 @@ class FieldPlotDocument(object):
         path.append( svg.path.Line( path[-1].end, path[0].start ) )
         path.closed = True
 
-      line = self.dwg.path( path.d(), stroke=linecolor,stroke_width=linewidth/self.unit,fill='none' )
+      line = self.dwg.path( path.d(), stroke=linecolor,stroke_width=linewidth/self.unit,fill='none',stroke_dasharray=linedasharray )
 
       return line
 
@@ -295,8 +296,9 @@ class FieldPlotDocument(object):
       config['linewidth'] = config.get('linewidth', 2)
       config['linecolor'] = config.get('linecolor', 'red')
       line = line.get_line(self._get_bounds(),config)
+      # config['linedasharray'] = "1,1"
       line = self._make_line_drawing( line, config )
-      group = self.dwg.g( id='equipotentialline{0}'.format( len(container.elements) ) )
+      group = self.dwg.g( id='equipotentialline{0}'.format( len(container.elements) ))
       group.add(line)
       container.add(group)
 
@@ -323,9 +325,9 @@ class Line(object):
 class FieldLine(Line):
   '''Class that calculates field lines.'''
 
-  def __init__(self, sources, p_start, backward=False):
+  def __init__(self, sourcecol, p_start, backward=False):
     super(FieldLine,self).__init__()
-    self.sources = sources
+    self.sourcecol = sourcecol
     self.p0 = sc.array(p_start)
     self.backward = backward
 
@@ -343,7 +345,7 @@ class FieldLine(Line):
 
     # f is the function that returns the tangent vector for the line at all points in space
     try:
-      field = getattr(self.sources,ftype)
+      field = getattr(self.sourcecol,ftype)
     except:
       raise BaseException("ERROR: Unknown ftype "+ftype)
 
@@ -351,12 +353,11 @@ class FieldLine(Line):
     f = lambda s, p: dir*vnorm(field(p))
 
     visited_sources = {}
-    for s in self.sources.sources:
+    for s in self.sourcecol.get_sources():
       visited_sources[id(s)] = 0
 
 
     def trace(ds,n):
-
       p = integrator.y
       add = (lambda d : nodes.append(d)) if ds > 0 else (lambda d : nodes.insert(0,d))
       last_source = None
@@ -372,7 +373,7 @@ class FieldLine(Line):
 
         # check to see if we are in a souce halo
         current_source = None
-        for s in self.sources.sources:
+        for s in self.sourcecol.get_sources():
           if s.dist(p) < halo:
             current_source = s
         if not current_source is None: # Yes, we are
@@ -438,7 +439,7 @@ class FieldLine(Line):
       # function will exit immediatly instead of trying to trace
       # through the source backward. we need to decrease the visited count
       # so we can to through it if needed.
-      s = self.sources.get_nearest_source(self.p0)
+      s = self.sourcecol.get_nearest_source(self.p0)
       if s.dist(self.p0) < halo and visited_sources[id(s)] > 0:
         visited_sources[id(s)] -= 1
 
@@ -459,10 +460,10 @@ class FieldLine(Line):
 class EquipotentialLine(Line):
   '''Class that calculates equipotential lines.'''
 
-  def __init__(self, sources, p_start):
+  def __init__(self, sourcecol, p_start):
     super(EquipotentialLine,self).__init__()
 
-    self.sources = sources
+    self.sourcecol = sourcecol
     self.p0 = sc.array(p_start)
 
   def get_line(self, bounds=None, config={}):
@@ -477,7 +478,7 @@ class EquipotentialLine(Line):
     # so the "direction field" for equipotential lines is just the vector field rotated by 90 degrees.
 
     # f is the function that returns the tangent vector for the line at all points in space
-    f = lambda s, p: vrot( (vnorm(self.sources.E(p))), pi/2 )
+    f = lambda s, p: vrot( (vnorm(self.sourcecol.E(p))), pi/2 )
     p = self.p0
     s = 0
 
@@ -645,36 +646,45 @@ FieldPlotDocument._make_Dipole_drawing = _make_Dipole_drawing
 
 class SourceCollection(object):
   '''A collection of field sources.'''
-  def __init__(self):
-    self.sources = []
+  def __init__(self, sources = []):
+    self.sources = sources
 
   def add_source(self,s):
     self.sources.append(s)
 
-  def get_nearest_source(self, r, filter = lambda s : True ):
+  def get_sources( self, filterfunc = None ):
+    if filterfunc is None:
+      filterfunc = lambda s : True
+
+    return filter( filterfunc, self.sources )
+
+  def filtered( self, filterfunc ):
+    return SourceCollection( filter( filterfunc, self.sources) )
+
+  def get_nearest_source(self, r, filterfunc = lambda s : True ):
     distance = float('inf')
     nearest_source = None
-    for source in self.sources:
-      if filter(source) and source.dist(r) < distance:
+    for source in self.get_sources(filterfunc):
+      if source.dist(r) < distance:
         nearest_source = source
         distance = source.dist(r)
     return nearest_source
       
   def E(self,r):
     Exy = sc.zeros(2)
-    for s in self.sources:
+    for s in self.get_sources():
       Exy += s.E(r)
     return Exy
 
   def B(self,r):
     Bxy = sc.zeros(2)
-    for s in self.sources:
+    for s in self.get_sources():
       Bxy += s.B(r)
     return Bxy
 
   def V(self,r):
     Vxy = 0
-    for s in self.sources:
+    for s in self.get_sources():
       Vxy += s.V(r)
     return Vxy
 
@@ -723,10 +733,9 @@ class FieldLineCollection(LineCollection):
     self.lines += lines
 
   def add_lines_around_sources( self, sources, **config ):
-    filter = config.get('filter', lambda s : True)
-    for s in sources.sources:
-      if filter(s):
-        self.add_lines_around_point( sources, s.pos(), **config )
+    filterfunc = config.get('filterfunc', lambda s : True )
+    for s in filter( filterfunc, sources.get_sources() ):
+      self.add_lines_around_point( sources, s.pos(), **config )
 
 
   def add_lines_to_point_charges( self, sources, **config ):
@@ -734,16 +743,14 @@ class FieldLineCollection(LineCollection):
        For example, to make sure that at least 10 lines leaving (or enter) each point charge in
        the drawing.
     '''
-    config['filter'] = lambda s : isinstance(s,Monopole)
-    for s in sources.sources:
-      self.add_lines_around_point( sources, s.pos(), **config )
+    c = c.copy()
+    c.update( { 'filterfunc' : (lambda s : isinstance(s,Monopole) ) } )
+    self.add_lines_around_sources( sources, **config )
 
-
-
-  def add_lines_to_dipole_charges( self, sources, numlines, theta = pi/2, halo=1e-1 ):
-    config['filter'] = lambda s : isinstance(s,Dipole)
-    for s in sources.sources:
-      self.add_lines_around_point( sources, s.pos(), **config )
+  def add_lines_to_dipole_charges( self, sources, **config ):
+    c = c.copy()
+    c.update( { 'filterfunc' : (lambda s : isinstance(s,Dipole) ) } )
+    self.add_lines_around_sources( sources, **config )
 
 class EquipotentialLineCollection(LineCollection):
   '''A collection of equipotential lines with methods to help create them.'''
