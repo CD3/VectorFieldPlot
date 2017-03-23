@@ -594,7 +594,7 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
         outfile.write(etree.tostring(self.svg, xml_declaration=True,
             pretty_print=True, encoding='utf-8'))
         outfile.close()
-        print 'image written to', filename + '.svg'
+        print('image written to', filename + '.svg')
  
  
  
@@ -712,7 +712,7 @@ class FieldLine:
                             (dpole * abs(cv) < xtol) and (l > 1e-3)):
                             # path is closed
                             nodes[-1]['v_out'] = None
-                            print 'closed at', pretty_vec(p)
+                            print('closed at', pretty_vec(p))
                             break
                         elif (h > 0.99 * dpole and (cv > 0.9 or
                             (cv > 0. and dpole * abs(sv) < ytol))):
@@ -788,7 +788,7 @@ class FieldLine:
                         # create a corner
                         # use second-order formulas instead of runge-kutta
                         p += hc * v2
-                        print 'corner at', pretty_vec(p)
+                        print('corner at', pretty_vec(p))
                         v = vnorm(2. * v2 - v)
                         nodes.append({'p':p.copy(),'v_in':v*hc,'corner':True})
                         l += h
@@ -812,7 +812,7 @@ class FieldLine:
                         adif = angle_dif(a1, a0)
                         if (abs(adif) / (.8*hh)**2 > corner_limit or
                             abs(a0) + abs(a1) >= pi / 2.):
-                            print 'end edge at', pretty_vec(p)
+                            print('end edge at', pretty_vec(p))
                             # direction after corner changes again -> end line
                             nodes[-1]['v_out'] = None
                             break
@@ -862,7 +862,7 @@ class FieldLine:
                         h = vabs(nodes[-1]['p'] - p)
                         nodes[-2]['v_out'] = f(nodes[-2]['p']) * h
                         nodes[-1]['v_in'] = f(nodes[-1]['p']) * h
-                    print 'stopped at', pretty_vec(nodes[-1]['p'])
+                    print('stopped at', pretty_vec(nodes[-1]['p']))
                     break 
  
             # adapt step carefully
@@ -879,9 +879,9 @@ class FieldLine:
  
         nodes[-1]['v_out'] = None
         if i == maxn:
-            print maxn, 'integration steps exceeded at', pretty_vec(p)
+            print(maxn, 'integration steps exceeded at', pretty_vec(p))
         if l >= maxr:
-            print 'integration boundary',str(maxr),'exceeded at',pretty_vec(p)
+            print('integration boundary',str(maxr),'exceeded at',pretty_vec(p))
         return nodes
  
     def __is_loop(self, nodes, path_close_tol):
@@ -1028,7 +1028,7 @@ class FieldLine:
             if num_success > 2 and N < N_old: num_success = 2
             if num_success >= 3: break
             if num >= 25:
-                print 'polyline creation did not converge after', num, 'tries!'
+                print('polyline creation did not converge after', num, 'tries!')
                 break
             ratios = [ratio * N / n for ratio in ratios]
  
