@@ -204,7 +204,7 @@ about: http://commons.wikimedia.org/wiki/File:{0}.svg
     def __get_arrowname(self, fillcolor='#000000'):
         if 'arrows' not in dir(self):
             self.arrows = {}
-        if fillcolor not in self.arrows.iterkeys():
+        if fillcolor not in self.arrows.keys():
             arrow = etree.SubElement(self.__get_defs(), 'path')
             self.arrows[fillcolor] = arrow
             arrow.set('id', 'arrow' + str(len(self.arrows)))
@@ -507,13 +507,13 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
                 if fixed[i]:
                     d01[i] += offs[i] * arrows_dist * [1., -1.][i]
                     mina -= 1
-                    if not maxa is None: maxa -= 1
+                    if maxa is not None: maxa -= 1
             if d01[1] - d01[0] < 0.: break
             elif d01[1] - d01[0] == 0.: d_list = [d01[0]]
             else:
                 d_list = []
                 if fixed[0]: d_list.append(d01[0])
-                if maxa > 0 or maxa == None:
+                if (maxa == None) or (maxa > 0):
                     number_intervals = (d01[1] - d01[0]) / arrows_dist
                     number_offsets = 0.
                     for i in [0, 1]:
@@ -521,7 +521,7 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
                         else: number_offsets += offs[i] - .5
                     n = int(number_intervals - number_offsets + 0.5)
                     n = max(n, mina)
-                    if not maxa is None: n = min(n, maxa)
+                    if maxa is not None: n = min(n, maxa)
                     if n > 0:
                         d = (d01[1] - d01[0]) / float(n + number_offsets)
                         if fixed[0]: d_start = d01[0] + d
@@ -577,7 +577,7 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
             obj = etree.SubElement(self.symbols, name)
         else:
             obj = etree.SubElement(group, name)
-        for i, j in params.iteritems():
+        for i, j in params.items():
             obj.set(str(i), str(j))
         return obj
  
@@ -590,11 +590,11 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
  
         # write content to file
         if filename == None: filename = self.name
-        outfile = open(filename + '.svg', 'w')
+        outfile = open(filename + '.svg', 'wb')
         outfile.write(etree.tostring(self.svg, xml_declaration=True,
             pretty_print=True, encoding='utf-8'))
         outfile.close()
-        print 'image written to', filename + '.svg'
+        print('image written to', filename + '.svg')
  
  
  
@@ -639,7 +639,7 @@ class FieldLine:
         if not v is None: d_near *= 1.3 - cosv(v, self.first_point - p)
         type_near = 'start'
         mon = []
-        for ptype, poles in self.field.elements.iteritems():
+        for ptype, poles in self.field.elements.items():
             if ptype not in ['monopoles', 'dipoles'] or len(poles) == 0:
                 continue
             for pole in poles:
@@ -712,7 +712,7 @@ class FieldLine:
                             (dpole * abs(cv) < xtol) and (l > 1e-3)):
                             # path is closed
                             nodes[-1]['v_out'] = None
-                            print 'closed at', pretty_vec(p)
+                            print('closed at', pretty_vec(p))
                             break
                         elif (h > 0.99 * dpole and (cv > 0.9 or
                             (cv > 0. and dpole * abs(sv) < ytol))):
@@ -788,7 +788,7 @@ class FieldLine:
                         # create a corner
                         # use second-order formulas instead of runge-kutta
                         p += hc * v2
-                        print 'corner at', pretty_vec(p)
+                        print('corner at', pretty_vec(p))
                         v = vnorm(2. * v2 - v)
                         nodes.append({'p':p.copy(),'v_in':v*hc,'corner':True})
                         l += h
@@ -812,7 +812,7 @@ class FieldLine:
                         adif = angle_dif(a1, a0)
                         if (abs(adif) / (.8*hh)**2 > corner_limit or
                             abs(a0) + abs(a1) >= pi / 2.):
-                            print 'end edge at', pretty_vec(p)
+                            print('end edge at', pretty_vec(p))
                             # direction after corner changes again -> end line
                             nodes[-1]['v_out'] = None
                             break
@@ -862,7 +862,7 @@ class FieldLine:
                         h = vabs(nodes[-1]['p'] - p)
                         nodes[-2]['v_out'] = f(nodes[-2]['p']) * h
                         nodes[-1]['v_in'] = f(nodes[-1]['p']) * h
-                    print 'stopped at', pretty_vec(nodes[-1]['p'])
+                    print('stopped at', pretty_vec(nodes[-1]['p']))
                     break 
  
             # adapt step carefully
@@ -879,9 +879,9 @@ class FieldLine:
  
         nodes[-1]['v_out'] = None
         if i == maxn:
-            print maxn, 'integration steps exceeded at', pretty_vec(p)
+            print(maxn, 'integration steps exceeded at', pretty_vec(p))
         if l >= maxr:
-            print 'integration boundary',str(maxr),'exceeded at',pretty_vec(p)
+            print('integration boundary',str(maxr),'exceeded at',pretty_vec(p))
         return nodes
  
     def __is_loop(self, nodes, path_close_tol):
@@ -936,7 +936,7 @@ class FieldLine:
                 self.nodes[i]['t'] /= length
         # add corner tag to all nodes
         for i, node in enumerate(self.nodes):
-            if not node.has_key('corner'):
+            if 'corner' not in node:
                 self.nodes[i]['corner'] = False
  
     def get_position(self, t):
@@ -1028,7 +1028,7 @@ class FieldLine:
             if num_success > 2 and N < N_old: num_success = 2
             if num_success >= 3: break
             if num >= 25:
-                print 'polyline creation did not converge after', num, 'tries!'
+                print('polyline creation did not converge after', num, 'tries!')
                 break
             ratios = [ratio * N / n for ratio in ratios]
  
@@ -1227,7 +1227,7 @@ class FieldVectors:
       returns distance to nearest pole
       '''
       d_near = None
-      for ptype, poles in self.field.elements.iteritems():
+      for ptype, poles in self.field.elements.items():
           if ptype not in ['monopoles', 'dipoles'] or len(poles) == 0:
               continue
           for pole in poles:
@@ -1246,7 +1246,7 @@ class Field:
     '''
     def __init__ (self, elements={}):
         self.elements = {}
-        for name, params in elements.iteritems():
+        for name, params in elements.items():
             self.add_element(name, params)
  
     '''
