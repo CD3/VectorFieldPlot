@@ -911,9 +911,9 @@ class FieldLine:
             nodes1.reverse()
             for node in nodes1:
                 v_out = node['v_out']
-                if node['v_in'] == None: node['v_out'] = None
+                if node['v_in'] is None: node['v_out'] = None
                 else: node['v_out'] = -node['v_in']
-                if v_out == None: node['v_in'] = None
+                if v_out is None: node['v_in'] = None
                 else: node['v_in'] = -v_out
             self.nodes = nodes1
             if len(self.nodes) > 0: self.first_point = self.nodes[0]['p']
