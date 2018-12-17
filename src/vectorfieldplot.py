@@ -33,6 +33,18 @@ import bisect
  
  
 # some helper functions
+def message(*args):
+    '''
+    message(priority,...) does a print with the 2nd, ... args, prefaced by an explanation of the priority.
+    priorities are: 1=informational (may not get printed), 2=informational (gets printed), 3=warning, 4=error
+    '''
+    args = list(args)
+    priority = args.pop(0)
+    describe_priority = (['information','information','warning','error'])[priority-1]
+    l = [describe_priority,': ']+args
+    if priority>=2:
+      print(' '.join(map(str, l)))
+
 def vabs(x):
     '''
     euclidian vector norm for any kind of vector
@@ -594,7 +606,7 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
         outfile.write(etree.tostring(self.svg, xml_declaration=True,
             pretty_print=True, encoding='utf-8'))
         outfile.close()
-        print('image written to', filename + '.svg')
+        message(2,'image written to', filename + '.svg')
  
  
  
@@ -712,7 +724,7 @@ class FieldLine:
                             (dpole * abs(cv) < xtol) and (l > 1e-3)):
                             # path is closed
                             nodes[-1]['v_out'] = None
-                            print('closed at', pretty_vec(p))
+                            message(1,'closed at', pretty_vec(p))
                             break
                         elif (h > 0.99 * dpole and (cv > 0.9 or
                             (cv > 0. and dpole * abs(sv) < ytol))):
@@ -788,7 +800,7 @@ class FieldLine:
                         # create a corner
                         # use second-order formulas instead of runge-kutta
                         p += hc * v2
-                        print('corner at', pretty_vec(p))
+                        message(1,'corner at', pretty_vec(p))
                         v = vnorm(2. * v2 - v)
                         nodes.append({'p':p.copy(),'v_in':v*hc,'corner':True})
                         l += h
@@ -812,7 +824,7 @@ class FieldLine:
                         adif = angle_dif(a1, a0)
                         if (abs(adif) / (.8*hh)**2 > corner_limit or
                             abs(a0) + abs(a1) >= pi / 2.):
-                            print('end edge at', pretty_vec(p))
+                            message(1,'end edge at', pretty_vec(p))
                             # direction after corner changes again -> end line
                             nodes[-1]['v_out'] = None
                             break
@@ -862,7 +874,7 @@ class FieldLine:
                         h = vabs(nodes[-1]['p'] - p)
                         nodes[-2]['v_out'] = f(nodes[-2]['p']) * h
                         nodes[-1]['v_in'] = f(nodes[-1]['p']) * h
-                    print('stopped at', pretty_vec(nodes[-1]['p']))
+                    message(1,'stopped at', pretty_vec(nodes[-1]['p']))
                     break 
  
             # adapt step carefully
@@ -879,9 +891,9 @@ class FieldLine:
  
         nodes[-1]['v_out'] = None
         if i == maxn:
-            print(maxn, 'integration steps exceeded at', pretty_vec(p))
+            message(1,maxn, 'integration steps exceeded at', pretty_vec(p))
         if l >= maxr:
-            print('integration boundary',str(maxr),'exceeded at',pretty_vec(p))
+            message(1,'integration boundary',str(maxr),'exceeded at',pretty_vec(p))
         return nodes
  
     def __is_loop(self, nodes, path_close_tol):
@@ -1028,7 +1040,7 @@ class FieldLine:
             if num_success > 2 and N < N_old: num_success = 2
             if num_success >= 3: break
             if num >= 25:
-                print('polyline creation did not converge after', num, 'tries!')
+                message(3,'polyline creation did not converge after', num, 'tries!')
                 break
             ratios = [ratio * N / n for ratio in ratios]
  
