@@ -29,10 +29,24 @@ import scipy as sc
 import scipy.optimize as op
 import scipy.integrate as ig
 import bisect
- 
+import logging 
  
  
 # some helper functions
+def message(*args):
+    '''
+    message(priority,...) does a print with the 2nd, ... args, prefaced by an explanation of the priority.
+    priorities are: 1=debugging, 2=informational, 3=warning, 4=error
+    By default, only levels 3 and higher are printed.
+    To change the logging level, do this:
+      import logging
+      logging.basicConfig(level=logging.DEBUG) # can be DEBUG, INFO, WARNING, or ERROR
+    '''
+    args = list(args)
+    fn = ([logging.debug,logging.info,logging.warning,logging.error])[args.pop(0)-1]
+    msg = ' '.join(map(str, args))
+    fn(msg)
+
 def vabs(x):
     '''
     euclidian vector norm for any kind of vector
@@ -594,7 +608,7 @@ L {3},-{2} L {1},-{0} Z'.format(11.1, 8.5, 2.6, 0))
         outfile.write(etree.tostring(self.svg, xml_declaration=True,
             pretty_print=True, encoding='utf-8'))
         outfile.close()
-        print('image written to', filename + '.svg')
+        message(2,'image written to', filename + '.svg')
  
  
  
@@ -712,7 +726,7 @@ class FieldLine:
                             (dpole * abs(cv) < xtol) and (l > 1e-3)):
                             # path is closed
                             nodes[-1]['v_out'] = None
-                            print('closed at', pretty_vec(p))
+                            message(1,'closed at', pretty_vec(p))
                             break
                         elif (h > 0.99 * dpole and (cv > 0.9 or
                             (cv > 0. and dpole * abs(sv) < ytol))):
@@ -788,7 +802,7 @@ class FieldLine:
                         # create a corner
                         # use second-order formulas instead of runge-kutta
                         p += hc * v2
-                        print('corner at', pretty_vec(p))
+                        message(1,'corner at', pretty_vec(p))
                         v = vnorm(2. * v2 - v)
                         nodes.append({'p':p.copy(),'v_in':v*hc,'corner':True})
                         l += h
@@ -812,7 +826,7 @@ class FieldLine:
                         adif = angle_dif(a1, a0)
                         if (abs(adif) / (.8*hh)**2 > corner_limit or
                             abs(a0) + abs(a1) >= pi / 2.):
-                            print('end edge at', pretty_vec(p))
+                            message(1,'end edge at', pretty_vec(p))
                             # direction after corner changes again -> end line
                             nodes[-1]['v_out'] = None
                             break
@@ -862,7 +876,7 @@ class FieldLine:
                         h = vabs(nodes[-1]['p'] - p)
                         nodes[-2]['v_out'] = f(nodes[-2]['p']) * h
                         nodes[-1]['v_in'] = f(nodes[-1]['p']) * h
-                    print('stopped at', pretty_vec(nodes[-1]['p']))
+                    message(1,'stopped at', pretty_vec(nodes[-1]['p']))
                     break 
  
             # adapt step carefully
@@ -879,9 +893,9 @@ class FieldLine:
  
         nodes[-1]['v_out'] = None
         if i == maxn:
-            print(maxn, 'integration steps exceeded at', pretty_vec(p))
+            message(1,maxn, 'integration steps exceeded at', pretty_vec(p))
         if l >= maxr:
-            print('integration boundary',str(maxr),'exceeded at',pretty_vec(p))
+            message(1,'integration boundary',str(maxr),'exceeded at',pretty_vec(p))
         return nodes
  
     def __is_loop(self, nodes, path_close_tol):
@@ -911,9 +925,9 @@ class FieldLine:
             nodes1.reverse()
             for node in nodes1:
                 v_out = node['v_out']
-                if node['v_in'] == None: node['v_out'] = None
+                if node['v_in'] is None: node['v_out'] = None
                 else: node['v_out'] = -node['v_in']
-                if v_out == None: node['v_in'] = None
+                if v_out is None: node['v_in'] = None
                 else: node['v_in'] = -v_out
             self.nodes = nodes1
             if len(self.nodes) > 0: self.first_point = self.nodes[0]['p']
@@ -1028,7 +1042,7 @@ class FieldLine:
             if num_success > 2 and N < N_old: num_success = 2
             if num_success >= 3: break
             if num >= 25:
-                print('polyline creation did not converge after', num, 'tries!')
+                message(3,'polyline creation did not converge after', num, 'tries!')
                 break
             ratios = [ratio * N / n for ratio in ratios]
  

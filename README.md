@@ -90,3 +90,11 @@ This example will draw the field for a dipole directly using the dipole element
 
     # write the document
     doc.write()
+
+## Messages and logging
+
+By default, the software only prints out messages that are significant warnings or errors.
+To change this default, you can do the following:
+
+    import logging
+    logging.basicConfig(level=logging.DEBUG) # can be DEBUG, INFO, WARNING, or ERROR
