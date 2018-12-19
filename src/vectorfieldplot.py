@@ -29,21 +29,23 @@ import scipy as sc
 import scipy.optimize as op
 import scipy.integrate as ig
 import bisect
- 
+import logging 
  
  
 # some helper functions
 def message(*args):
     '''
     message(priority,...) does a print with the 2nd, ... args, prefaced by an explanation of the priority.
-    priorities are: 1=informational (may not get printed), 2=informational (gets printed), 3=warning, 4=error
+    priorities are: 1=debugging, 2=informational, 3=warning, 4=error
+    By default, only levels 3 and higher are printed.
+    To change the logging level, do this:
+      import logging
+      logging.basicConfig(level=logging.DEBUG) # can be DEBUG, INFO, WARNING, or ERROR
     '''
     args = list(args)
-    priority = args.pop(0)
-    describe_priority = (['information','information','warning','error'])[priority-1]
-    l = [describe_priority,': ']+args
-    if priority>=2:
-      print(' '.join(map(str, l)))
+    fn = ([logging.debug,logging.info,logging.warning,logging.error])[args.pop(0)-1]
+    msg = ' '.join(map(str, args))
+    fn(msg)
 
 def vabs(x):
     '''
