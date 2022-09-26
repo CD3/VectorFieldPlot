@@ -637,9 +637,9 @@ class FieldLine:
         self.first_point = self.p_start
         self.bounds_func = bounds_func
         self.stop_funcs = stop_funcs
-        if start_v == None: self.v_start = None
+        if start_v is None: self.v_start = None
         else: self.v_start = sc.array(start_v)
-        if start_d == None: self.d_start = None
+        if start_d is None: self.d_start = None
         else: self.d_start = sc.array(start_d)
         self.__create_nodes(directions, maxn, maxr, hmax,
             pass_dipoles, path_close_tol)
