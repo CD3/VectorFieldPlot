@@ -21,6 +21,11 @@ $ pip install vectorfieldplot
 
 # Using
 
+The `vectorfieldplot` module provides classes to build and render images. To create an image we create a document. We add a field
+to the document and then add elements to the field (sources of the field). After that, we add lines to the document, these
+are the field lines that will actually be drawn on the image. This is usually the most difficult part and will require some
+trial and error to get right. After lines are added we write document which will create an SVG image.
+
 Here is an example program that uses the module to generate a picture of the fields lines for an electric dipole
 consisting of a positive and negative charge on the x-axis.
 
@@ -63,8 +68,13 @@ for i in range(N):
 doc.write()
 ```
 
+Running this script will create an image named `ElectricDipole.svg` that looks like this:
+
+![](./examples/ElectricDipole.svg)
+
 
 This example will draw the field for a dipole directly using the dipole element
+
 ```python
 #!  /usr/bin/env python
 
@@ -102,6 +112,8 @@ for i in range(N):
 # write the document
 doc.write()
 ```
+
+![](./examples/ElectricDipole2.svg)
 
 ## Messages and logging
 
