@@ -3,7 +3,10 @@
 '''An example script that generates a picture of the field lines for an electric dipole.'''
 
 import math
+import logging
 import vectorfieldplot as vfp
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 # create a document. we specify the file name and image size here
