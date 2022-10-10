@@ -1,7 +1,7 @@
 VectorFieldPlot
 ===============
 
-A python module for creating svg images of electric and magnetic field lines for user defined charge and current configurations.
+A python module for creating SVG images of electric and magnetic field lines for user defined charge and current configurations.
 
 This module is an adaptation of the code written by Geek3 to create high quality, physically correct images of electric and magnetic field lines.
 
@@ -10,7 +10,7 @@ This module is an adaptation of the code written by Geek3 to create high quality
 The version posted by Geek3 was a single python script that generated the field lines. It contained a set of classes and utility functions for creating the lines,
 and then a short program at the end that used these classes to create an image for a specific charge configuration. The images created by the script are fantastic, it does a great job.
 
-This project just organized the classes that do the work into their own module so that is can be used by multiple programs at once.
+This project just organized the classes that do the work into their own module so that it can be used by multiple programs at once.
 This initial commit is a straight copy of version 1.3 posted by Geek3.
 
 # Installing
@@ -24,9 +24,9 @@ $ pip install vectorfieldplot
 The `vectorfieldplot` module provides classes to build and render images. To create an image we create a document. We add a field
 to the document and then add elements to the field (sources of the field). After that, we add lines to the document, these
 are the field lines that will actually be drawn on the image. This is usually the most difficult part and will require some
-trial and error to get right. After lines are added we write document which will create an SVG image.
+trial and error to get right. After lines are added we write the document which will create an SVG image.
 
-Here is an example program that uses the module to generate a picture of the fields lines for an electric dipole
+Here is an example program that uses the module to generate a picture of the field lines for an electric dipole
 consisting of a positive and negative charge on the x-axis.
 
 ```python
@@ -52,7 +52,7 @@ field.add_element('monopoles' , [ [ 1,0, 1]  # the positive charge
 doc.draw_charges(field)
 
 # start drawing the field lines
-# we are going to draw 20 field lines comming off of the positive charge at uniformly spaced angles.
+# we are going to draw 20 field lines coming off of the positive charge at uniformly spaced angles.
 N = 20
 for i in range(N):
     # compute the angle that the line will start off at
@@ -61,7 +61,7 @@ for i in range(N):
     # this takes the initial position, the x and y components of the initial direction, and whether or not should go forward
     # or backward.
     line = vfp.FieldLine( field, [1,0], start_v=[math.cos( angle ) , math.sin( angle )],directions='forward' )
-    # draw the lin on the document
+    # draw the line on the document
     doc.draw_line(line,arrows_style={'min_arrows':1,'max_arrows':1})
 
 # write the document
@@ -73,7 +73,7 @@ Running this script will create an image named `ElectricDipole.svg` that looks l
 ![](./examples/ElectricDipole.svg)
 
 
-This example will draw the field for a dipole directly using the dipole element
+This example will draw the field for a dipole directly using the dipole element:
 
 ```python
 #!  /usr/bin/env python
@@ -90,14 +90,14 @@ doc = vfp.FieldplotDocument( 'ElectricDipole2', width=800,height=600,unit=100)
 # create a field opbject
 field = vfp.Field()
 # add the dipole
-# note, parameters are should be [ r_x, r_y, p_x, p_y ], where r is the position vector and p is the dipole moment.
+# note, parameters should be [ r_x, r_y, p_x, p_y ], where r is the position vector and p is the dipole moment.
 field.add_element('dipoles' , [ [ 0,0,1,0] ] )
 
 # draw the charges for the field on the document
 doc.draw_charges(field)
 
 # start drawing the field lines
-# we are going to draw 20 field lines comming off of the positive charge at uniformly spaced angles.
+# we are going to draw 100 field lines coming off of the positive charge at uniformly spaced angles.
 N = 100
 for i in range(N):
     # compute the angle that the line will start off at
@@ -106,7 +106,7 @@ for i in range(N):
     # this takes the initial position, the x and y components of the initial direction, and whether or not should go forward
     # or backward.
     line = vfp.FieldLine( field, [0.1*math.cos(angle),0.1*math.sin(angle)], start_v=[math.cos( angle ) , math.sin( angle )],directions='forward' )
-    # draw the lin on the document
+    # draw the line on the document
     doc.draw_line(line,arrows_style={'min_arrows':1,'max_arrows':1})
 
 # write the document
